@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "keel": {
+      "command": "node",
+      "args": ["mcp/server.js"]
+    }
+  }
+}
