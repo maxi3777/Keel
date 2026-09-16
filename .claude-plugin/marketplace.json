@@ -1,0 +1,16 @@
+{
+  "name": "keel-marketplace",
+  "owner": {
+    "name": "maxi3777",
+    "url": "https://github.com/maxi3777"
+  },
+  "plugins": [
+    {
+      "name": "keel",
+      "source": "./",
+      "description": "Co-created concept design with an authoritative DATUM design document and cross-session design stewardship.",
+      "version": "1.0.0",
+      "skills": ["./skills/keel"]
+    }
+  ]
+}

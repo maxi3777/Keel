@@ -113,25 +113,37 @@ Later, in an unrelated session: *"add merge-multiple-selections-into-one-questio
 
 ## Installation
 
-**Prerequisites**: `git`, Node.js ≥ 18 (the server has zero npm dependencies).
+**Prerequisite**: Node.js ≥ 18 (the MCP server has zero npm dependencies).
+
+### From the plugin marketplace (recommended — Claude Code, ZCode, and compatible hosts)
+
+This repository doubles as its own plugin marketplace, so it installs exactly like marketplace plugins such as Superpowers:
+
+```bash
+claude plugin marketplace add maxi3777/Keel
+claude plugin install keel@keel-marketplace
+```
+
+Inside an interactive session the same steps are slash commands: `/plugin marketplace add maxi3777/Keel`, then `/plugin install keel@keel-marketplace`. (On hosts with a different command syntax, e.g. `$plugin`, the same two operations apply; the plugin name is `keel`.)
+
+Installing the plugin registers all three components at once:
+
+- the **MCP server** (`.mcp.json` → `node mcp/server.js`, resolved relative to the plugin root),
+- the **skill** (`/keel` on slash-command hosts; the skill description also auto-triggers resident STEWARD mode whenever `.keel/DATUM.md` exists),
+- the **SessionStart hook** (`hooks/hooks.json`, with `$CLAUDE_PLUGIN_ROOT` expanded by the host).
+
+To update later: `claude plugin marketplace update keel-marketplace` followed by reinstalling, or simply pin a ref when adding the marketplace (`maxi3777/Keel@v1.0.0`).
+
+Optionally, verify the mechanical layer end-to-end on a clone:
 
 ```bash
 git clone https://github.com/maxi3777/Keel.git
-# optional but recommended — verifies the whole mechanical layer end-to-end:
 node Keel/tests/smoke.js     # expect: SMOKE PASS
 ```
 
-### Option A — install as a plugin (hosts with plugin support: Claude Code, ZCode)
+### Other MCP-compatible hosts (manual wiring)
 
-Place the cloned `Keel/` directory where your host loads plugins from (or point your host at the path), so that:
-
-- `.claude-plugin/plugin.json` is discovered (name `keel`, version 1.0.0);
-- `.mcp.json` registers the MCP server (`node mcp/server.js`, resolved relative to the plugin root);
-- `hooks/hooks.json` registers the SessionStart hook (`$CLAUDE_PLUGIN_ROOT` is replaced by the host with the plugin path).
-
-### Option B — manual wiring (works on any MCP-compatible host)
-
-1. **MCP server** — add to your *project's* `.mcp.json` (adjust the path):
+1. **MCP server** — add to your *project's* `.mcp.json`:
 
    ```json
    {
@@ -141,15 +153,9 @@ Place the cloned `Keel/` directory where your host loads plugins from (or point 
    }
    ```
 
-2. **Skill** — copy or symlink `Keel/skills/keel/` into your host's skills directory (e.g., the workspace/personal skills folder), so `/keel` and the STEWARD trigger in the skill description become active.
+2. **Skill** — copy or symlink `skills/keel/` into your host's skills directory.
 
-3. **Session hook (STEWARD bootstrap)** — register a session-start hook in your host's settings that runs:
-
-   ```bash
-   node /absolute/path/to/Keel/hooks/session-start.js
-   ```
-
-   With no hook support, the fallback still works: the skill instructs the agent to call `keel_digest` at session start — you lose automatic injection, not enforcement (writes remain server-gated).
+3. **Session hook (STEWARD bootstrap)** — register `node /absolute/path/to/Keel/hooks/session-start.js` as a session-start command. Without hook support, the skill falls back to calling `keel_digest` at session start — you lose automatic injection, not enforcement (writes remain server-gated).
 
 **Verify**: in a scratch directory, tell your agent `/keel test project` — you should see `.keel/DATUM.md` created and a confirmation request for extracted requirements. `/keel status` should report `phase=concept`.
 
@@ -232,4 +238,4 @@ Internal evidence that shaped the mechanics (not from papers): in the authors' 3
 node tests/smoke.js   # end-to-end: spawns the real server, drives init → consent → gates → handoff → compaction
 ```
 
-Repository layout: `mcp/server.js` (server) · `skills/keel/SKILL.md` (agent protocol) · `templates/DATUM.md` · `hooks/` (session bootstrap) · `docs/PROTOCOL.md` (specification) · `tests/smoke.js`.
+Repository layout: `.claude-plugin/` (plugin + marketplace manifests) · `mcp/server.js` (server) · `skills/keel/SKILL.md` (agent protocol) · `templates/DATUM.md` · `hooks/` (session bootstrap) · `docs/PROTOCOL.md` (specification) · `tests/smoke.js`.

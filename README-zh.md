@@ -109,25 +109,37 @@ agent 展示波及（D3 变为带生命周期的上下文事件 → P2 增加过
 
 ## 安装
 
-**前置**：`git`、Node.js ≥ 18（server 零 npm 依赖）。
+**前置**：Node.js ≥ 18（MCP server 零 npm 依赖）。
+
+### 从插件市场安装（推荐——Claude Code、ZCode 及兼容宿主）
+
+本仓库同时就是自己的插件市场，安装方式与 Superpowers 这类市场插件完全一致：
+
+```bash
+claude plugin marketplace add maxi3777/Keel
+claude plugin install keel@keel-marketplace
+```
+
+交互会话里同样的两步是斜杠命令：`/plugin marketplace add maxi3777/Keel`，然后 `/plugin install keel@keel-marketplace`。（命令语法不同的宿主，如 `$plugin`，执行的是同样两个操作；插件名都是 `keel`。）
+
+安装一次注册全部三个组件：
+
+- **MCP server**（`.mcp.json` → `node mcp/server.js`，相对插件根解析）；
+- **skill**（斜杠命令宿主上是 `/keel`；skill 描述还会在 `.keel/DATUM.md` 存在时自动触发常驻 STEWARD 模式）；
+- **SessionStart 钩子**（`hooks/hooks.json`，`$CLAUDE_PLUGIN_ROOT` 由宿主展开为插件路径）。
+
+日后更新：`claude plugin marketplace update keel-marketplace` 后重装，或在添加市场时钉住版本（`maxi3777/Keel@v1.0.0`）。
+
+可选：克隆仓库做机械层端到端验证：
 
 ```bash
 git clone https://github.com/maxi3777/Keel.git
-# 建议执行——端到端验证整个机械层：
 node Keel/tests/smoke.js     # 预期输出：SMOKE PASS
 ```
 
-### 方式 A —— 作为插件安装（支持插件的宿主：Claude Code、ZCode）
+### 其他 MCP 兼容宿主（手工接线）
 
-把克隆下来的 `Keel/` 目录放到宿主加载插件的位置（或让宿主指向该路径），使：
-
-- `.claude-plugin/plugin.json` 被发现（名称 `keel`，版本 1.0.0）；
-- `.mcp.json` 注册 MCP server（`node mcp/server.js`，相对插件根解析）；
-- `hooks/hooks.json` 注册 SessionStart 钩子（`$CLAUDE_PLUGIN_ROOT` 由宿主替换为插件路径）。
-
-### 方式 B —— 手工接线（任何 MCP 兼容宿主可用）
-
-1. **MCP server**——加入项目的 `.mcp.json`（路径按需修改）：
+1. **MCP server**——加入项目的 `.mcp.json`：
 
    ```json
    {
@@ -137,15 +149,9 @@ node Keel/tests/smoke.js     # 预期输出：SMOKE PASS
    }
    ```
 
-2. **skill**——把 `Keel/skills/keel/` 复制或链接到宿主的 skills 目录（工作区或个人目录），使 `/keel` 命令与 skill 描述里的 STEWARD 触发生效。
+2. **skill**——把 `skills/keel/` 复制或链接到宿主的 skills 目录。
 
-3. **会话钩子（STEWARD 自举）**——在宿主设置里注册会话启动时执行：
-
-   ```bash
-   node /绝对路径/Keel/hooks/session-start.js
-   ```
-
-   宿主不支持钩子时降级仍然可用：skill 会指示 agent 在会话开始调用 `keel_digest`——失去的是自动注入，不是强制力（写入仍然被 server 把门）。
+3. **会话钩子（STEWARD 自举）**——在宿主设置里注册会话启动时执行 `node /绝对路径/Keel/hooks/session-start.js`。宿主不支持钩子时，skill 降级为会话开始主动调用 `keel_digest`——失去的是自动注入，不是强制力（写入仍被 server 把门）。
 
 **验证**：在临时目录里对 agent 说 `/keel 测试项目`——应看到 `.keel/DATUM.md` 被创建、抽取的需求请你确认；`/keel status` 应显示 `phase=concept`。
 
@@ -228,4 +234,4 @@ Keel 浓缩了两轮"调研 + 实验"研究（智能体问题求解策略 / 自�
 node tests/smoke.js   # 端到端：真实拉起 server，走完 init → 同意 → 门 → 交付 → 压缩
 ```
 
-仓库结构：`mcp/server.js`（server）· `skills/keel/SKILL.md`（agent 协议）· `templates/DATUM.md` · `hooks/`（会话自举）· `docs/PROTOCOL.md`（规范）· `tests/smoke.js`。
+仓库结构：`.claude-plugin/`（插件清单 + 市场清单）· `mcp/server.js`（server）· `skills/keel/SKILL.md`（agent 协议）· `templates/DATUM.md` · `hooks/`（会话自举）· `docs/PROTOCOL.md`（规范）· `tests/smoke.js`。
