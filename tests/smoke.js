@@ -95,10 +95,10 @@ const TECH = `# Technical Design (derived)
 
 (async () => {
   let r = await rpc('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'smoke', version: '0' } });
-  ok(r.result.serverInfo.version === '1.1.0', 'initialize (server version 1.1.0)');
+  ok(r.result.serverInfo.version === '1.1.1', 'initialize (server version 1.1.1)');
   child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
   r = await rpc('tools/list', {});
-  ok(r.result.tools.length === 18, `tools/list exposes 18 tools (got ${r.result.tools.length})`);
+  ok(r.result.tools.length === 19, `tools/list exposes 19 tools (got ${r.result.tools.length})`);
 
   // 1. activation: three files
   r = await jcall('keel_init', { project: 'smoke' });
@@ -196,6 +196,17 @@ const TECH = `# Technical Design (derived)
   ok(fs.existsSync(r.archived), 'compaction archives the raw AMENDMENTS.md');
   r = await jcall('keel_status', {});
   ok(r.counts.amendments === 3 && r.phase === 'handoff', `after compaction the log holds 3 rows (got ${r.counts.amendments})`);
+
+  // 12. orphan-block cleanup
+  const datumFile = path.join(tmp, '.keel', 'DATUM.md');
+  const before = fs.readFileSync(datumFile, 'utf8');
+  fs.writeFileSync(datumFile, before + '\n## Orphan junk block\nstale copy of an early misplacement\n');
+  r = await jcall('keel_clean', {});
+  ok(r.removed === 1 && /Orphan junk/.test(r.titles.join(',')), 'keel_clean removes orphan ## blocks');
+  r = await jcall('keel_read', { section: 'intent' });
+  ok(String(r).includes('select-and-ask'), 'keyed sections intact after clean');
+  r = await jcall('keel_status', {});
+  ok(r.counts.amendments === 4, `maintenance row appended (got ${r.counts.amendments})`);
 
   console.log(failed === 0 ? '\nSMOKE PASS' : `\nSMOKE FAIL (${failed})`);
   child.kill();

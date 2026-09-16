@@ -149,6 +149,16 @@ git clone https://github.com/maxi3777/Keel.git
 node Keel/tests/smoke.js     # expect: SMOKE PASS
 ```
 
+### Codex CLI
+
+Codex has no one-step plugin-marketplace channel for MCP + skills; use the bundled adapter:
+
+```bash
+node adapters/codex/install.js     # --uninstall to remove
+```
+
+This copies the skill to `~/.codex/skills/keel/` (same SKILL.md + references/ layout) and appends `[mcp_servers.keel]` to `~/.codex/config.toml`. Codex has no session hooks, so the documented fallback applies: the agent calls `keel_digest` at session start and after confirmations — enforcement is unaffected (writes stay server-gated). Details: [`adapters/codex/README.md`](adapters/codex/README.md). This path was validated end-to-end with codex-cli 0.153.4 across three multi-turn design themes (concept → handoff → stewardship, including protected references and compaction).
+
 ### Other MCP-compatible hosts (manual wiring)
 
 1. **MCP server** — add to your *project's* `.mcp.json`:

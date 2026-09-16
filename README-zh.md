@@ -145,6 +145,16 @@ git clone https://github.com/maxi3777/Keel.git
 node Keel/tests/smoke.js     # 预期输出：SMOKE PASS
 ```
 
+### Codex CLI
+
+Codex 没有一步到位的"MCP + skill"市场通道，使用内置适配器：
+
+```bash
+node adapters/codex/install.js     # --uninstall 卸载
+```
+
+它把 skill 复制到 `~/.codex/skills/keel/`（同样的 SKILL.md + references/ 结构），并向 `~/.codex/config.toml` 追加 `[mcp_servers.keel]`。Codex 没有会话钩子，走文档化的降级路径：agent 在会话开始和确认后主动调用 `keel_digest`——强制力不受影响（写入仍被 server 把门）。详见 [`adapters/codex/README.md`](adapters/codex/README.md)。该路径已在 codex-cli 0.153.4 上用三个多轮设计主题（概念→交割→守护，含受保护引用与压缩）端到端验证。
+
 ### 其他 MCP 兼容宿主（手工接线）
 
 1. **MCP server**——加入项目的 `.mcp.json`：

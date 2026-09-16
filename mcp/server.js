@@ -21,7 +21,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const VERSION = '1.1.0';
+const VERSION = '1.1.1';
 
 const SECTIONS = [
   { id: '00', key: 'intent',   title: '00 Intent' },
@@ -187,8 +187,8 @@ function makeKeel(root) {
     }
     return [...refs];
   }
-  function staleRefsOf(coreRefs) {
-    return parseRefs().filter(p => p.carries.some(c => coreRefs.includes(c)))
+  function staleRefsOf(coreRefs, rows) {
+    return (rows || parseRefs()).filter(p => p.carries.some(c => coreRefs.includes(c)))
       .map(p => ({ ref: p.ref, path: p.path, carries: p.carries.filter(c => coreRefs.includes(c)) }));
   }
   function ripple(targets) {
@@ -241,6 +241,9 @@ function makeKeel(root) {
     if (typeof content !== 'string' || !content.trim()) throw new Error('content must be a non-empty string.');
     if (!summary || typeof summary !== 'string' || summary.length > 120) throw new Error('summary is required and must be ≤120 characters.');
     if (level !== 'core' && level !== 'peripheral') throw new Error('level must be "core" or "peripheral".');
+    if (!isTech && /^##\s/m.test(content)) {
+      throw new Error('Section content must not contain "## " headings — "##" is reserved for section boundaries and would split the section during parsing. Use "###" or lower inside sections.');
+    }
 
     let effLevel = level;
     const closure = scanRefs(section, content);
@@ -253,6 +256,7 @@ function makeKeel(root) {
     const prop = {
       id: null, section, content, level, effLevel, summary, rationale, overturns,
       position: position || (isTech ? 'TECHNICAL.md' : meta.title), closure, createdAt: new Date().toISOString(),
+      baseContent: isTech ? getTechnical() : getSection(section),
     };
     // Core ids this change touches, beyond the escalation closure: concept/intent
     // writes carry their own P*/R* ids mechanically.
@@ -280,16 +284,26 @@ function makeKeel(root) {
   function confirm(args) {
     requireInit();
     const { proposal_id, consent_evidence } = args;
-    const st = readState();
+    let st = readState();
     const prop = st.proposals[proposal_id];
     if (!prop) throw new Error(`Proposal not found or already handled: ${proposal_id} (keel_status lists pending proposals).`);
     const ev = (consent_evidence || '').trim();
     if (ev.length < 2) throw new Error('consent_evidence is required: the user\'s consenting words from the conversation (audit trail).');
+    const current = prop.section === 'technical' ? getTechnical() : getSection(prop.section);
+    if (current !== prop.baseContent) {
+      throw new Error(`Section "${prop.section}" changed after this proposal was staged (another amendment landed first). Call keel_reject on ${proposal_id} and re-propose against the current content — otherwise the earlier change would be silently clobbered.`);
+    }
+    // Snapshot the ref table BEFORE applying: a proposal that itself adds a
+    // reference must not report that new reference as stale.
+    const preRefs = parseRefs().map(p => ({ ...p }));
     applyWrite(prop, `yes ("${ev.slice(0, 40)}")`);
-    const result = { written: true, proposal_id, amendment: prop.amendmentNo, level: prop.effLevel };
-    const stale = staleRefsOf((prop.touchedCore && prop.touchedCore.length ? prop.touchedCore : prop.closure).filter(r => CORE_REF.test(r)));
-    if (stale.length) result.staleRefs = stale;
+    // Re-read state AFTER applyWrite: appendAmendment updates seq counters inside,
+    // and writing the pre-apply snapshot would regress them.
+    st = readState();
     delete st.proposals[proposal_id]; writeState(st);
+    const result = { written: true, proposal_id, amendment: prop.amendmentNo, level: prop.effLevel };
+    const stale = staleRefsOf((prop.touchedCore && prop.touchedCore.length ? prop.touchedCore : prop.closure).filter(r => CORE_REF.test(r)), preRefs);
+    if (stale.length) result.staleRefs = stale;
     return result;
   }
   function reject(args) {
@@ -457,6 +471,22 @@ function makeKeel(root) {
     return { from, to, snapshot };
   }
 
+  // ---------- Maintenance ----------
+  function cleanOrphans() {
+    requireInit();
+    const blocks = parseDatum();
+    const orphans = blocks.filter(b => b.title !== null && !sectionMeta(b.title));
+    if (!orphans.length) return { removed: 0, note: 'No orphan ## blocks found.' };
+    const kept = blocks.filter(b => b.title === null || sectionMeta(b.title));
+    fs.writeFileSync(datumPath, serialize(kept));
+    const n = appendAmendment({
+      level: 'maintenance', position: 'DATUM.md',
+      summary: `Removed ${orphans.length} orphan ## block(s): ${orphans.map(o => o.title).slice(0, 5).join('; ')}`,
+      consent: 'batch-notified',
+    });
+    return { removed: orphans.length, titles: orphans.map(o => o.title), amendment: n };
+  }
+
   // ---------- Compaction / exemption / health ----------
   function compact(args) {
     requireInit();
@@ -559,7 +589,7 @@ function makeKeel(root) {
 
   return {
     exists, init, propose, confirm, reject, ripple, glossaryRegister,
-    refAdd, refRemove, refsVerify,
+    refAdd, refRemove, refsVerify, cleanOrphans,
     gate, gateRecord, setPhase, compact, exempt, health, digestText, status,
     getSection, getTechnical,
   };
@@ -595,6 +625,7 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'relative to project root' }, carries: { type: 'array', items: { type: 'string' } }, label: { type: 'string' } }, required: ['path', 'carries'] } },
   { name: 'keel_ref_remove', description: 'Remove a protected reference (shrinks the protection boundary; core consent flow). The document itself is untouched.', inputSchema: { type: 'object', properties: { ref: { type: 'string' } }, required: ['ref'] } },
   { name: 'keel_refs_verify', description: 'Re-hash every active protected reference and report matches/mismatches. Tamper-evidence only — never blocks; regenerate or re-admit after intentional changes.', inputSchema: { type: 'object', properties: {} } },
+  { name: 'keel_clean', description: 'Maintenance: remove orphan "## " blocks from DATUM.md that no tool can reach (historical write misplacements). Keyed sections and the preamble are untouched; logged as a maintenance amendment (batch-notified).', inputSchema: { type: 'object', properties: {} } },
   { name: 'keel_compact', description: 'Compact the amendment log: the AI provides merged summary entries, the server archives the raw log verbatim (never deleted). Refuses below 5 entries.',
     inputSchema: { type: 'object', properties: { entries: { type: 'array', items: { type: 'object', properties: { position: { type: 'string' }, summary: { type: 'string' } }, required: ['position', 'summary'] } } }, required: ['entries'] } },
   { name: 'keel_exempt', description: 'Explicit waiver: a change conflicts with DATUM but the user waves it through; recorded for audit.', inputSchema: { type: 'object', properties: { summary: { type: 'string' }, reason: { type: 'string' } }, required: ['summary', 'reason'] } },
@@ -619,6 +650,7 @@ function startStdio() {
     keel_ref_add: a => keel.refAdd(a),
     keel_ref_remove: a => keel.refRemove(a),
     keel_refs_verify: () => keel.refsVerify(),
+    keel_clean: () => keel.cleanOrphans(),
     keel_compact: a => keel.compact(a),
     keel_exempt: a => keel.exempt(a),
     keel_health: () => keel.health(),
@@ -655,6 +687,8 @@ function startStdio() {
           result = { isError: true, content: [{ type: 'text', text: 'ERROR: ' + String(e && e.message || e) }] };
         }
       } else if (msg.method === 'ping') result = {};
+      else if (msg.method === 'resources/list') result = { resources: [] };
+      else if (msg.method === 'prompts/list') result = { prompts: [] };
       else throw new Error(`Unknown method: ${msg.method}`);
       send({ jsonrpc: '2.0', id: msg.id, result });
     } catch (e) {
