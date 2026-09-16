@@ -10,6 +10,17 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "keel_confirm|mcp__keel__keel_confirm",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PLUGIN_ROOT/hooks/post-confirm.js\""
+          }
+        ]
+      }
     ]
   }
 }

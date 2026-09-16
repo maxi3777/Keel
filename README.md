@@ -23,30 +23,38 @@ Keel's answer is one mechanism aimed at all four: a single authoritative design 
 
 ## Core concepts
 
-### The DATUM document
+### The document set, organized by protection level
 
-`DATUM.md` is the authoritative design record. It is layered, and the layers answer different questions:
+Keel does not keep one big design file. Files are split along **protection levels**, not size:
 
 ```
-DATUM.md
-├─ 00 Intent              your goal, success criteria, out-of-scope, numbered requirements R1..Rn
-├─ G  Glossary            project-specific terms: definition, where they are load-bearing, aliases
-├─ 01 Concept             design principles P1..P5 (weighted priorities) + concept model
-│                         (entities/flows/invariants in everyday words; class names forbidden)
-│                         + parking lot (tech details deferred to the technical phase)
-├─ 02 Trade-off Ledger    every decision: alternatives, why rejected, cost; revisions as
-│                         "old belief → new evidence → new principle"
-├─ 03 Technical Design    nine items (module boundaries, interface contracts, data model,
-│                         state machines, error policy, stack+versions, acceptance criteria,
-│                         non-functional constraints, risks), each tracing back via implements: P*
-└─ 04 Amendment Log       append-only, server-maintained; who changed what, when, and with
-                          whose consent; compacted into archive/ (never deleted)
+L1  write-gating (before the fact)   DATUM.md — the guarded core
+L2  tamper-evidence (after the fact)  protected references (your other docs, hash-verified)
+L3  audit (after the fact)            code vs the Contract Index (reconcile)
+L0  unprotected                       TECHNICAL.md — derived, regenerable, never guarded
+```
+
+```
+.keel/
+├─ DATUM.md       the guarded core: 00 Intent (goal/scope/numbered requirements)
+│                 · G Glossary · 01 Concept (principles P* + concept model + parking lot)
+│                 · 02 Trade-off Ledger · 03 Contract Index (one guarded line per contract,
+│                 with implements: P* and a detail link) · R Protected References
+├─ TECHNICAL.md   the derived elaboration: T1–T9 (module boundaries, interface contracts,
+│                 data model, state machines, error policy, stack+versions, acceptance
+│                 criteria, non-functional constraints, risks), each linked back via
+│                 contracts: Cn — this is what plan/build consumes
+├─ AMENDMENTS.md  append-only history: who changed what, when, with whose consent;
+│                 compacted into archive/ (never deleted)
+├─ handoff.md     mechanical bundle (DATUM + TECHNICAL) snapshotted after G2
+├─ probes/ · archive/
 ```
 
 Two rules keep it trustworthy:
 
-- **The altitude contract.** DATUM tracks design-level change (principles, concept model, module boundaries, ownership, contracts, stack choices). It deliberately does *not* track function internals, UI tweaks, or refactors — a document that tried to track everything would rot and lose authority.
-- **The consent tiers.** Core changes (requirements, principles, concept model, load-bearing terms) block until you explicitly consent, and your consenting words are stored as audit evidence. Peripheral changes apply immediately and are batch-reported. The server computes which is which — not the AI's judgment.
+- **The altitude contract.** DATUM's membership criterion is *non-degradability*: it tracks design-level facts (principles, concept model, contracts, ownership, stack choices) as a thin Contract Index; the full technical elaboration is a derived document that can in principle be regenerated from the core. A document that tried to guard everything would rot and lose authority.
+- **The consent tiers.** Core changes (requirements, principles, concept model, the index, protected references, load-bearing terms) block until you explicitly consent, and your consenting words are stored as audit evidence. Peripheral changes apply immediately and are batch-reported. The server computes which is which — not the AI's judgment.
+- **Protected references.** Your other documents (an API spec another workflow generated, an architecture note) can be *admitted* into the anti-degradation scope: Keel records their whole-file hash and verifies it on demand. Protection here is tamper-evidence, not write-gating — the owning workflow edits freely, and divergence is detected and reported, never blocked.
 
 ### The derivation chain
 
@@ -83,7 +91,7 @@ low  │              be informed; adjudicate only on conflicts              ←
 
 "Resident" means three concrete things, not one:
 
-1. **SessionStart hook** (mechanical). `hooks/hooks.json` registers a session-start command. If `.keel/DATUM.md` exists in the working directory, the hook prints a *verbatim excerpt* of DATUM (goal, out-of-scope, requirements, principles, top glossary terms, last amendments) which the host injects into the new session's context. This is not an AI summary and cannot hallucinate — it is sliced by code from the document itself.
+1. **SessionStart hook** (mechanical). `hooks/hooks.json` registers a session-start command. If `.keel/DATUM.md` exists in the working directory, the hook prints a *verbatim excerpt* of the core — led by a **document pointer** (path + access method) so any other workflow in the session can find and derive from it — followed by goal, out-of-scope, requirements, principles, top contracts, top terms, protected references, and recent amendments. This is not an AI summary and cannot hallucinate — it is sliced by code from the document itself. A **PostToolUse hook** additionally refreshes the excerpt after every applied core amendment, so a long session tracks the design without being restarted.
 2. **Skill trigger** (behavioral). The skill's description tells the host to load the Keel protocol whenever `.keel/DATUM.md` exists, which activates the behavioral rules: run the pre-edit check, stop on conflicts, offer amend/drop/exempt.
 3. **MCP server** (mechanical backstop). Even if both of the above fail, DATUM writes only go through the server, which stages core changes until consent arrives. Divergence without a paper trail is not possible through the supported path.
 
@@ -132,7 +140,7 @@ Installing the plugin registers all three components at once:
 - the **skill** (`/keel` on slash-command hosts; the skill description also auto-triggers resident STEWARD mode whenever `.keel/DATUM.md` exists),
 - the **SessionStart hook** (`hooks/hooks.json`, with `$CLAUDE_PLUGIN_ROOT` expanded by the host).
 
-To update later: `claude plugin marketplace update keel-marketplace` followed by reinstalling, or simply pin a ref when adding the marketplace (`maxi3777/Keel@v1.0.0`).
+To update later: `claude plugin marketplace update keel-marketplace` followed by reinstalling, or simply pin a ref when adding the marketplace (`maxi3777/Keel@v1.1.0`).
 
 Optionally, verify the mechanical layer end-to-end on a clone:
 
@@ -182,9 +190,10 @@ You will be shown decision menus only. Choices are ledgered automatically. When 
 You just work. The digest is in context automatically. When a task touches the design level, the agent stops at the conflict and offers amend / drop / exempt. Useful commands:
 
 - `/keel status` — phase, gates, pending proposals, batch notification of peripheral changes, health summary.
-- `/keel check <change>` — "would this touch the design level?" (traceability closure).
+- `/keel check <change>` — "would this touch the design level?" (traceability closure, T→C→P join; also lists protected references now suspected stale).
 - `/keel amend` — propose a design-level change yourself.
-- `/keel reconcile` — audit the code against DATUM contracts; drift is labeled *stale document* vs *rogue code*.
+- `/keel protect <path>` / `/keel unprotect <ref>` — admit/remove a derived document in the anti-degradation scope (hash recorded at admission; verification reports divergence, never blocks). When a core amendment lands, Keel reports which protected documents are now stale — the owning workflow regenerates.
+- `/keel reconcile` — audit the code against the Contract Index and re-hash protected references; drift is labeled *stale document* vs *rogue code*.
 - `/keel digest` — re-show the excerpt at any time.
 
 ### Maintenance
@@ -238,4 +247,4 @@ Internal evidence that shaped the mechanics (not from papers): in the authors' 3
 node tests/smoke.js   # end-to-end: spawns the real server, drives init → consent → gates → handoff → compaction
 ```
 
-Repository layout: `.claude-plugin/` (plugin + marketplace manifests) · `mcp/server.js` (server) · `skills/keel/SKILL.md` (agent protocol) · `templates/DATUM.md` · `hooks/` (session bootstrap) · `docs/PROTOCOL.md` (specification) · `tests/smoke.js`.
+Repository layout: `.claude-plugin/` (plugin + marketplace manifests) · `mcp/server.js` (server) · `skills/keel/SKILL.md` + `skills/keel/references/` (agent protocol, dispatcher + per-phase details) · `templates/` (DATUM / TECHNICAL / AMENDMENTS) · `hooks/` (session bootstrap + post-confirm refresh) · `docs/PROTOCOL.md` (specification) · `tests/smoke.js`.
