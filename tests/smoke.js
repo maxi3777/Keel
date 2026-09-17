@@ -95,7 +95,7 @@ const TECH = `# Technical Design (derived)
 
 (async () => {
   let r = await rpc('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'smoke', version: '0' } });
-  ok(r.result.serverInfo.version === '1.1.1', 'initialize (server version 1.1.1)');
+  ok(r.result.serverInfo.version === '1.2.0', 'initialize (server version 1.2.0)');
   child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
   r = await rpc('tools/list', {});
   ok(r.result.tools.length === 19, `tools/list exposes 19 tools (got ${r.result.tools.length})`);
@@ -207,6 +207,28 @@ const TECH = `# Technical Design (derived)
   ok(String(r).includes('select-and-ask'), 'keyed sections intact after clean');
   r = await jcall('keel_status', {});
   ok(r.counts.amendments === 4, `maintenance row appended (got ${r.counts.amendments})`);
+
+  // 13. multi-section batch: one consent, one row
+  const gl2 = String(await jcall('keel_read', { section: 'glossary' })) + '\n| batch probe | one consent one row | 01 Concept model | | active |';
+  const lg2 = LEDGER + '\n### L2 Batch probe [decision]\n- Tier: peripheral\n- Decision: written via multi-section batch\n';
+  const cntBefore = (await jcall('keel_status', {})).counts.amendments;
+  r = await jcall('keel_write_section', { sections: [{ section: 'ledger', content: lg2 }, { section: 'glossary', content: gl2 }], level: 'peripheral', summary: 'batch: ledger L2 + glossary probe' });
+  ok(r.needsConsent === true && r.level === 'core-escalated' && r.sections.length === 2, 'batch escalates as one unit (core-loaded glossary row)');
+  await jcall('keel_confirm', { proposal_id: r.proposalId, consent_evidence: 'batch approved' });
+  r = await jcall('keel_status', {});
+  ok(r.counts.amendments === cntBefore + 1, `batch adds exactly one amendment row (got +${r.counts.amendments - cntBefore})`);
+
+  // 14. post-handoff mechanical refresh
+  const CONCEPT2 = CONCEPT.replace('the conversation is the single authoritative source of context', 'the conversation is the single authoritative source of context (v2)');
+  r = await jcall('keel_write_section', { section: 'concept', content: CONCEPT2, level: 'core', summary: 'P2 wording v2', rationale: 'verify post-handoff rolling refresh' });
+  await jcall('keel_confirm', { proposal_id: r.proposalId, consent_evidence: 'refresh probe confirmed' });
+  const ho2 = fs.readFileSync(path.join(tmp, '.keel', 'handoff.md'), 'utf8');
+  ok(ho2.includes('(v2)') && /Snapshot @ amendment #\d+/.test(ho2), 'handoff rolls forward with amendment-annotated header');
+  ok(fs.readdirSync(path.join(tmp, '.keel', 'archive')).some(f => /^handoff-/.test(f)), 'replaced handoff frozen to archive/');
+
+  // 15. dual health metrics
+  r = await jcall('keel_health', {});
+  ok(r.coreAmendmentsLifetime > 0 && /since the last compaction/.test(r.yellowFlagBasis), 'dual health metrics (lifetime + labeled epoch basis)');
 
   console.log(failed === 0 ? '\nSMOKE PASS' : `\nSMOKE FAIL (${failed})`);
   child.kill();

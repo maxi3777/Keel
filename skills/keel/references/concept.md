@@ -19,6 +19,7 @@ D6 Rejected routes     ≥1 complete alternative + why rejected (a derivation wi
 ```
 
 - **Multi-candidate policy**: one candidate by default; only when D3/D4 hit a genuine fork, present 2–3 chains **sharing the same D1/D2**, with fork points marked — the user adjudicates the fork, not the whole design anew.
+- **Term registration timing**: register a qualifying term via `keel_glossary_register` **in the same turn it first appears** in a derivation — the glossary's value is arbitrating *during* the discussion, not reconstructing definitions after it. The registration bar is unchanged (load-bearing somewhere in DATUM, or an ambiguity history); do not swing to eager registration.
 - **Challenge protocol**: the user attacks any Di → show the ripple (which later steps change; `keel_ripple` where contracts/terms are involved) → draft the revised chain → core-level propose → consent → confirm → record a revision entry in the 02 ledger ("old belief → new evidence → new principle", fill `overturns`).
 - **Requirement refinement** co-evolves here: refined requirements flow back into 00 (core level); gaps exposed by the concept are raised as proposals to the user.
 
@@ -32,5 +33,8 @@ D6 Rejected routes     ≥1 complete alternative + why rejected (a derivation wi
 
 1. Ask the user to **sign off each P\* in the current priority order** (principles are weighted priorities, not invariants); record the sign-off as an 02 ledger entry.
 2. `keel_gate g1` (mechanical checks).
-3. **Skeleton test** (semantic): dispatch a context-free subagent that receives only 00 + P* and rebuilds the concept model; diff against D5 and report rebuild coverage. Low coverage → the P* are decoration; return to derivation. Save the probe under `.keel/probes/` and record via `keel_gate_record`.
+3. **Skeleton test** (semantic): rebuild the concept model from 00 + P* only.
+   - *Preferred — true external signal*: where a shell and the host CLI exist, run a fresh-process rebuild, e.g. `codex exec --ephemeral "<00 + P* verbatim> — rebuild the concept model"` (or the host's headless equivalent), capture the output, diff it against D5. Label the evidence `external (fresh process)`.
+   - *Fallback*: self-simulation is allowed only where no subagent/shell facility exists, and the evidence MUST be labeled `self-simulated (no subagent facility)` with the user told this check is weakened.
+   Low coverage → the principles are decoration; return to derivation. Save the probe under `.keel/probes/` and record via `keel_gate_record`.
 4. All passed → `keel_phase {to:"tech"}`.

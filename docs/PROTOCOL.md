@@ -50,6 +50,8 @@ Correctness of the core is bidirectional: it must be **complete** (every design-
 | Peripheral (notify) | TECHNICAL.md detail with resolvable contracts; ledger narrative; compaction | `keel_write_section` applies and logs → batch notification at session end / a gate / `/keel status` |
 | Escalation rule | Closure touches core, or a `contracts:` id is unindexed | Server auto-escalates to core staging |
 
+Batch writes: one proposal may span multiple sections (`sections:[…]`) — one consent and one amendment row cover the whole logical change, and the sections cannot drift apart between writes. Consent economy: a user message that specifies a change verbatim counts as consent for that exact change only when its ripple closure is empty; a non-empty closure must be shown before confirming (the user may decide differently after seeing it).
+
 A well-converged design should not produce many core amendments. **Core-amendment frequency is a quality gauge** — after G1, frequent core changes raise a yellow flag (re-run the skeleton test) instead of being silently absorbed.
 
 ## 3. Phase protocol
@@ -68,7 +70,7 @@ D1 requirement facts (cite R* only) → D2 tensions → D3 key insights ([fact]/
 
 ### G1 (hard gate)
 
-User signs off each P* in priority order (ledgered) → `keel_gate g1` (mechanical: goal/out-of-scope/≥1 requirement/3–5 principles/≥1 ledger entry/≥1 term) → skeleton test (context-free subagent rebuilds the model from 00+P* only; diffed against D5) recorded via `keel_gate_record` → `keel_phase {to:"tech"}`.
+User signs off each P* in priority order (ledgered) → `keel_gate g1` (mechanical: goal/out-of-scope/≥1 requirement/3–5 principles/≥1 ledger entry/≥1 term) → skeleton test, recorded via `keel_gate_record` (preferred: a genuine fresh-process rebuild — e.g. `codex exec --ephemeral` where a shell/CLI exists — evidence labeled `external (fresh process)`; self-simulation allowed only where no facility exists, evidence labeled `self-simulated`, user informed the check is weakened) → `keel_phase {to:"tech"}`.
 
 ### TECH — index + elaboration as one logical unit
 
@@ -76,7 +78,7 @@ Decision menus (options + recommendation + reasoning + cost of being wrong), cho
 
 ### G2 (hard gate) → HANDOFF
 
-`keel_gate g2`: nine TECHNICAL items filled with resolvable `contracts:` links; every index row has `implements` + `detail`; join integrity in both directions → user reviews index + summary (`keel_gate_record`) → `keel_phase {to:"handoff"}` snapshots the bundle (DATUM + TECHNICAL).
+`keel_gate g2`: nine TECHNICAL items filled with resolvable `contracts:` links; every index row has `implements` + `detail`; join integrity in both directions → user reviews index + summary (`keel_gate_record`) → `keel_phase {to:"handoff"}` snapshots the bundle (DATUM + TECHNICAL). The bundle then **rolls forward mechanically**: every design amendment applied while in handoff phase rewrites `handoff.md` (header annotated `Snapshot @ amendment #N`) and freezes the replaced version to `archive/handoff-<n>.md` — downstream staleness never depends on agent diligence.
 
 ### STEWARD — resident stewardship
 
@@ -109,7 +111,7 @@ The language-level core. Registration bar: load-bearing in DATUM or an ambiguity
 
 ## 7. Health and oscillation (reference metric)
 
-`keel_health` / `keel_status`: core-amendment counts, yellow flag (core amendments > 6), oscillation (same location revised back-and-forth ≥2 times, computed mechanically from `supersedes` fields). **Displayed only; no threshold; gates nothing.**
+`keel_health` / `keel_status`: dual core-amendment counts — **epoch** (since the last compaction, the yellow-flag basis, threshold-free label included) and **lifetime** (a state counter that survives compaction) — plus oscillation (same location revised back-and-forth ≥2 times, computed mechanically from `supersedes` fields). **Displayed only; no threshold; gates anything—never.**
 
 ## 8. Failure modes (honest boundaries)
 

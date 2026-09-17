@@ -6,7 +6,8 @@
 - **TECHNICAL.md** — derived elaboration (L0): T1..T9, each carrying `contracts: Cn` linking back to the index. The index is the guarded representation; this file is what plan/build consumes.
 
 Rules:
-- Write the index entry and the TECHNICAL elaboration **as one logical unit** — propose the index (core consent), then the elaboration (peripheral; the server escalates automatically if a `contracts:` id is unindexed or its closure touches core).
+- Write the index entry and the TECHNICAL elaboration **as one logical unit — a single `keel_write_section` call using the batch form** `sections:[{section:'index',…},{section:'technical',…}]`: one consent and one amendment row cover the whole change, and the sections cannot drift apart between writes.
+- More generally, any revision that spans sections (e.g. a requirement change touching 00 + 01 + ledger) should be one batched proposal, not N sequential ones.
 - `implements:` lives **only** in the index (single source of traceability); `contracts:` lives only in TECHNICAL.md. Unindexed contract ids are mechanically rejected via closure escalation.
 - Concreteness bar: **a plan/build phase receiving the handoff makes no further design decisions.**
 

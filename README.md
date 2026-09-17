@@ -208,7 +208,7 @@ You just work. The digest is in context automatically. When a task touches the d
 
 ### Maintenance
 
-When the amendment log grows, `keel_status` suggests compaction: the agent merges superseded entries into summaries, the server archives the raw log verbatim under `.keel/archive/` (never deleted). The health summary reports core-amendment frequency and an **oscillation** count (positions revised back and forth ≥2 times) — both are *reference metrics*: Keel deliberately never thresholds on them.
+When the amendment log grows, `keel_status` suggests compaction: the agent merges superseded entries into summaries, the server archives the raw log verbatim under `.keel/archive/` (never deleted). The health summary reports core-amendment frequency on two clocks — since the last compaction (the yellow-flag basis, always labeled) and lifetime (never resets) — plus an **oscillation** count (positions revised back and forth ≥2 times) — all *reference metrics*: Keel deliberately never thresholds on them. Two more mechanical conveniences keep the record honest: a revision spanning sections goes out as **one batched proposal** (one consent, one amendment row), and while a project is in the handoff phase every design amendment **rolls `handoff.md` forward automatically**, freezing the replaced version to `archive/handoff-<n>.md` with a `Snapshot @ amendment #N` header.
 
 ## How enforcement actually works
 

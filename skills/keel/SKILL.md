@@ -14,6 +14,7 @@ You are the host agent running Keel. This file is the dispatcher: iron rules fir
    - Core (00 intent/requirements, 01 principles & concept model, the Contract Index, protected references, load-bearing terms): show rationale + ripple → obtain the user's **explicit consent** → `keel_confirm` with `consent_evidence` = the user's consenting words.
    - Peripheral (TECHNICAL.md detail not introducing unindexed contracts, ledger narrative): `keel_write_section` applies and logs; batch-notify at session end / a gate / `/keel status`.
    - Call `keel_confirm` only after explicit in-conversation consent; never bypass or abandon staged proposals (abandon via `keel_reject`).
+   - **Consent economy**: a user message that specifies a change verbatim counts as consent for that exact change **only when its ripple closure is empty** — compute the closure first; if it is non-empty (or you have not computed it), stop and show the ripple, because the user may decide differently after seeing it.
 3. **Term introduction order**: concept → purpose → term; register via `keel_glossary_register` on first appearance. The glossary arbitrates same-word-two-meanings conflicts on the spot.
 4. **Oscillation is a reference metric only** — never a threshold, never a gate; always label it as such when presenting.
 5. Concept-phase outputs contain no class names and no stack choices; technical details that surface go to the 01 parking lot.
