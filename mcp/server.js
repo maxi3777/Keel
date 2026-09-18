@@ -21,7 +21,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const VERSION = '1.2.0';
+const VERSION = '1.2.1';
 
 const SECTIONS = [
   { id: '00', key: 'intent',   title: '00 Intent' },

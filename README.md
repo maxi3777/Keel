@@ -91,7 +91,7 @@ low  │              be informed; adjudicate only on conflicts              ←
 
 "Resident" means three concrete things, not one:
 
-1. **SessionStart hook** (mechanical). `hooks/hooks.json` registers a session-start command. If `.keel/DATUM.md` exists in the working directory, the hook prints a *verbatim excerpt* of the core — led by a **document pointer** (path + access method) so any other workflow in the session can find and derive from it — followed by goal, out-of-scope, requirements, principles, top contracts, top terms, protected references, and recent amendments. This is not an AI summary and cannot hallucinate — it is sliced by code from the document itself. A **PostToolUse hook** additionally refreshes the excerpt after every applied core amendment, so a long session tracks the design without being restarted.
+1. **SessionStart hook** (mechanical). `hooks/hooks.json` registers a session-start command. If `.keel/DATUM.md` exists in the working directory, the hook emits a *verbatim excerpt* of the core as hook JSON `additionalContext` (hosts parse hook stdout as strict JSON and discard plain text) — led by a **document pointer** (path + access method) so any other workflow in the session can find and derive from it — followed by goal, out-of-scope, requirements, principles, top contracts, top terms, protected references, and recent amendments. This is not an AI summary and cannot hallucinate — it is sliced by code from the document itself. A **PostToolUse hook** additionally refreshes the excerpt after every applied core amendment, so a long session tracks the design without being restarted.
 2. **Skill trigger** (behavioral). The skill's description tells the host to load the Keel protocol whenever `.keel/DATUM.md` exists, which activates the behavioral rules: run the pre-edit check, stop on conflicts, offer amend/drop/exempt.
 3. **MCP server** (mechanical backstop). Even if both of the above fail, DATUM writes only go through the server, which stages core changes until consent arrives. Divergence without a paper trail is not possible through the supported path.
 
@@ -136,9 +136,9 @@ Inside an interactive session the same steps are slash commands: `/plugin market
 
 Installing the plugin registers all three components at once:
 
-- the **MCP server** (`.mcp.json` → `node mcp/server.js`, resolved relative to the plugin root),
+- the **MCP server** (`.mcp.json` → `node ${CLAUDE_PLUGIN_ROOT}/mcp/server.js`; the template variable is expanded by the host to an absolute path — bare relative paths resolve against the session's working directory and break),
 - the **skill** (`/keel` on slash-command hosts; the skill description also auto-triggers resident STEWARD mode whenever `.keel/DATUM.md` exists),
-- the **SessionStart hook** (`hooks/hooks.json`, with `$CLAUDE_PLUGIN_ROOT` expanded by the host).
+- the **SessionStart hook** (`hooks/hooks.json`, with `${CLAUDE_PLUGIN_ROOT}` expanded by the host).
 
 To update later: `claude plugin marketplace update keel-marketplace` followed by reinstalling, or simply pin a ref when adding the marketplace (`maxi3777/Keel@v1.1.0`).
 

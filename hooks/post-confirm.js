@@ -1,9 +1,13 @@
 /*
  * Keel PostToolUse hook (matched on keel_confirm): after every applied core
- * amendment, print the refreshed digest so the session context tracks the
- * design without requiring a new session. The digest is a verbatim slice of
- * DATUM (never an AI paraphrase), produced by the same makeKeel() used by the
- * MCP server. Failed tool calls change nothing and are skipped.
+ * amendment, emit the refreshed digest as additionalContext so the session
+ * context tracks the design without requiring a new session. The digest is a
+ * verbatim slice of DATUM (never an AI paraphrase), produced by the same
+ * makeKeel() used by the MCP server. Failed tool calls change nothing and are
+ * skipped.
+ *
+ * Output contract: strict hook JSON {"hookSpecificOutput":{...}} or nothing —
+ * hosts parse stdout against a strict schema and discard plain text.
  */
 'use strict';
 const path = require('path');
@@ -16,6 +20,12 @@ process.stdin.setEncoding('utf8');
 process.stdin.on('data', d => { input += d; });
 process.stdin.on('end', () => { clearTimeout(timer); run(); });
 
+function emitContext(text) {
+  console.log(JSON.stringify({
+    hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: text },
+  }));
+}
+
 function run() {
   if (done) return;
   done = true;
@@ -26,9 +36,10 @@ function run() {
     const keel = makeKeel(process.cwd());
     if (keel.exists()) {
       const text = keel.digestText();
-      if (text) console.log(text);
+      if (text) emitContext(text);
     }
   } catch (_) {
     // A failed digest must never block the session; keel_digest can re-fetch it.
   }
 }
+

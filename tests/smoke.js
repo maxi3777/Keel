@@ -7,7 +7,7 @@
  * ripple (T→C→P join) → protected refs (add / verify / tamper / remove) →
  * exemption → compaction → health/status → digest doc pointer. */
 'use strict';
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -95,7 +95,7 @@ const TECH = `# Technical Design (derived)
 
 (async () => {
   let r = await rpc('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'smoke', version: '0' } });
-  ok(r.result.serverInfo.version === '1.2.0', 'initialize (server version 1.2.0)');
+  ok(r.result.serverInfo.version === '1.2.1', 'initialize (server version 1.2.1)');
   child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
   r = await rpc('tools/list', {});
   ok(r.result.tools.length === 19, `tools/list exposes 19 tools (got ${r.result.tools.length})`);
@@ -229,6 +229,33 @@ const TECH = `# Technical Design (derived)
   // 15. dual health metrics
   r = await jcall('keel_health', {});
   ok(r.coreAmendmentsLifetime > 0 && /since the last compaction/.test(r.yellowFlagBasis), 'dual health metrics (lifetime + labeled epoch basis)');
+
+  // 16. hook output contract: hosts parse hook stdout as strict JSON and
+  // discard plain text, so the digest must ride in additionalContext or the
+  // hook must stay silent.
+  const hookDir = path.join(__dirname, '..', 'hooks');
+  const parseHookOut = (s) => { const t = (s.stdout || '').toString().trim(); return t ? JSON.parse(t) : null; };
+  let hs = spawnSync(process.execPath, [path.join(hookDir, 'session-start.js')], { cwd: tmp, encoding: 'utf8' });
+  let hj = parseHookOut(hs);
+  ok(hs.status === 0 && hj && hj.hookSpecificOutput && hj.hookSpecificOutput.hookEventName === 'SessionStart'
+    && String(hj.hookSpecificOutput.additionalContext).startsWith('[Keel] Authoritative design document'),
+    'session-start emits strict JSON additionalContext (SessionStart)');
+  const noDatum = fs.mkdtempSync(path.join(os.tmpdir(), 'keel-nodatum-'));
+  hs = spawnSync(process.execPath, [path.join(hookDir, 'session-start.js')], { cwd: noDatum, encoding: 'utf8' });
+  ok(hs.status === 0 && (hs.stdout || '').toString().trim() === '', 'session-start is silent without .keel');
+  let hp = spawnSync(process.execPath, [path.join(hookDir, 'post-confirm.js')], {
+    cwd: tmp, encoding: 'utf8',
+    input: JSON.stringify({ tool_name: 'mcp__keel__keel_confirm', tool_response: { ok: true } }),
+  });
+  let pj = parseHookOut(hp);
+  ok(hp.status === 0 && pj && pj.hookSpecificOutput && pj.hookSpecificOutput.hookEventName === 'PostToolUse'
+    && typeof pj.hookSpecificOutput.additionalContext === 'string',
+    'post-confirm emits strict JSON additionalContext (PostToolUse)');
+  hp = spawnSync(process.execPath, [path.join(hookDir, 'post-confirm.js')], {
+    cwd: tmp, encoding: 'utf8',
+    input: JSON.stringify({ tool_response: { isError: true } }),
+  });
+  ok(hp.status === 0 && (hp.stdout || '').toString().trim() === '', 'post-confirm silent on failed tool call');
 
   console.log(failed === 0 ? '\nSMOKE PASS' : `\nSMOKE FAIL (${failed})`);
   child.kill();

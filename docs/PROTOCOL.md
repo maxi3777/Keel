@@ -82,7 +82,7 @@ Decision menus (options + recommendation + reasoning + cost of being wrong), cho
 
 ### STEWARD — resident stewardship
 
-1. **Session bootstrap**: SessionStart hook injects the verbatim digest, led by the document pointer (path + access method) so any workflow in the session can find and derive from the core; a PostToolUse hook refreshes the digest after every applied core amendment — no new session required.
+1. **Session bootstrap**: SessionStart hook injects the verbatim digest, led by the document pointer (path + access method) so any workflow in the session can find and derive from the core; a PostToolUse hook refreshes the digest after every applied core amendment — no new session required. Hook transport: the digest rides in hook JSON `additionalContext` (strict-schema stdout; hosts discard plain text), and all plugin-relative paths use the host-expanded `${CLAUDE_PLUGIN_ROOT}` template variable — never bare relative paths, which hosts resolve against the session working directory.
 2. **Pre-edit check**: does this touch P*, index contracts, ownership, boundaries? `keel_ripple` when unsure; `staleRefs` in the result list protected documents now suspected outdated.
 3. **On conflict, stop**: amend / drop / explicit exemption (`keel_exempt`, reason mandatory). New requirements diff against 00 first; silent absorption is forbidden.
 4. **Principle guard**: iteration outputs pass the P* check; tensions escalate to the user (three exits: adjust weights / revise the iteration / revise the principle).

@@ -132,9 +132,9 @@ claude plugin install keel@keel-marketplace
 
 安装一次注册全部三个组件：
 
-- **MCP server**（`.mcp.json` → `node mcp/server.js`，相对插件根解析）；
+- **MCP server**（`.mcp.json` → `node ${CLAUDE_PLUGIN_ROOT}/mcp/server.js`；模板变量由宿主展开为绝对路径——裸相对路径会被按会话工作目录解析而失效）；
 - **skill**（斜杠命令宿主上是 `/keel`；skill 描述还会在 `.keel/DATUM.md` 存在时自动触发常驻 STEWARD 模式）；
-- **SessionStart 钩子**（`hooks/hooks.json`，`$CLAUDE_PLUGIN_ROOT` 由宿主展开为插件路径）。
+- **SessionStart 钩子**（`hooks/hooks.json`，`${CLAUDE_PLUGIN_ROOT}` 由宿主展开为插件路径；钩子输出走严格 JSON `additionalContext`，纯文本会被宿主丢弃）。
 
 日后更新：`claude plugin marketplace update keel-marketplace` 后重装，或在添加市场时钉住版本（`maxi3777/Keel@v1.0.0`）。
 

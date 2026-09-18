@@ -2,7 +2,7 @@
   "mcpServers": {
     "keel": {
       "command": "node",
-      "args": ["mcp/server.js"]
+      "args": ["${CLAUDE_PLUGIN_ROOT}/mcp/server.js"]
     }
   }
 }
