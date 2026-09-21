@@ -146,8 +146,11 @@ Optionally, verify the mechanical layer end-to-end on a clone:
 
 ```bash
 git clone https://github.com/maxi3777/Keel.git
-node Keel/tests/smoke.js     # expect: SMOKE PASS
+node Keel/tests/hostcompat.js   # release gate: plugin packaging vs host contract
+node Keel/tests/smoke.js        # expect: SMOKE PASS
 ```
+
+`hostcompat.js` is the packaging gate added in v1.2.2 after three host-behavior assumptions broke the plugin on ZCode (bare relative MCP arg, shell-style `$VAR` in hook commands, plain-text hook stdout). It mechanically enforces the portable intersection: `${CLAUDE_PLUGIN_ROOT}`-anchored MCP paths, the seven supported hook events, `${...}` template variables, valid-regex matchers, version sync across manifests, and existence of every referenced file. Both scripts exit non-zero on any failure and are the pre-release check.
 
 ### Codex CLI
 

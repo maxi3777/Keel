@@ -9,7 +9,7 @@
       "name": "keel",
       "source": "./",
       "description": "Co-created concept design with an authoritative DATUM design document and cross-session design stewardship.",
-      "version": "1.2.1",
+      "version": "1.2.2",
       "skills": ["./skills/keel"]
     }
   ]

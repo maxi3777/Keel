@@ -95,7 +95,7 @@ const TECH = `# Technical Design (derived)
 
 (async () => {
   let r = await rpc('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'smoke', version: '0' } });
-  ok(r.result.serverInfo.version === '1.2.1', 'initialize (server version 1.2.1)');
+  ok(r.result.serverInfo.version === '1.2.2', 'initialize (server version 1.2.2)');
   child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
   r = await rpc('tools/list', {});
   ok(r.result.tools.length === 19, `tools/list exposes 19 tools (got ${r.result.tools.length})`);
