@@ -1,300 +1,286 @@
-# Keel — Mental Model of the Whole Flow
+# Keel —— 全流程心智模型
 
-> **One sentence.** Keel guards the part of a design that must never silently degrade: an authoritative DATUM of promises that only a consent-tiered server may write, where every change leaves an audit row, every session starts from the verbatim core, and every derived document is either protected or knowingly unprotected.
+> **一句话。** Keel 守护设计中绝不允许悄悄退化的那部分：一份只能经"分层同意服务器"写入的权威承诺文档（DATUM）——每次变更都留审计行，每个会话都从核心原文出发，每份派生物要么被保护、要么明确不设防。
 
-**Document contract.** This file is Keel's *mental model*: the developer-facing picture of how the whole thing runs. It is a derived document (protection level L0) — the source of truth is the code (`mcp/server.js`, `skills/`, `hooks/`) plus `docs/PROTOCOL.md`; if this file ever disagrees with them, **they win and this file gets fixed**. Updates may deepen sections, but must not silently overturn a claim made earlier — a changed claim is edited in place *and* gets a changelog line. Maps to **Keel v1.2.2**; planned changes are listed in §9 and drawn dashed.
+**文档契约。** 本文件是 Keel 的*心智模型*：开发者视角的全流程图景。它是派生文档（保护级 L0）——真源是代码（`mcp/server.js`、`skills/`、`hooks/`）与 `docs/PROTOCOL.md`；若本文件与它们冲突，**代码赢，本文件修**。更新只许加深，不得静默推翻早先的断言；确需改写的断言，就地修改并记入文末变更表。对应 **Keel v1.2.2**；计划项集中列于 §12，并在各分图中以虚线呈现。
 
 ---
 
-## 0. How to read this file
+## 0. 怎么读这份文件
 
-### 0.1 Audience colors and change formats
+### 0.1 总-分结构（为什么这样组织）
 
-Every node is colored by **who the step primarily serves**. Edge style tells you whether the flow exists today.
+这份文档是一张可缩放的地图：**§1 的总图是你脑中应常驻的那一层**——完整流程一图可见；可模块化的部分被抽离为**分图①–⑧**，在总图中各占一个**紫色节点**。紫色节点 = "此处放大见对应分图"。两层之间的桥就是编号：总图里的 ③ 和 §4 的分图③是同一个东西。读任何分图前先在总图里定位它，模型就不会断线。
 
-| Visual | Meaning |
+总图只画**已存在**的流程；计划项全部在各分图内以虚线呈现（计划清单见 §12）——不把未来画成现状，是保持模型连续性的纪律。
+
+### 0.2 颜色与线型规则
+
+| 视觉 | 含义 |
 |---|---|
-| **Green fill** | Developer-facing — a human can perceive it (something you read, decide, or type) |
-| **Blue fill** | AI-facing — agent cognition (prompted behavior, judgment, authorship) |
-| **Gray fill** | Purely mechanical — server code or hooks; runs identically every time |
-| Yellow fill, **dashed border** | Planned addition (does not exist yet) |
-| Orange fill, thick border | Planned modification of an existing step |
-| Solid arrow `──▶` | Flow exists in v1.2.2 |
-| Dotted arrow `╌╌▶` | Planned flow |
+| **绿色** | 开发者可感知——人会读到、决定或输入的步骤 |
+| **蓝色** | AI 行为——受提示词驱动的判断与产出 |
+| **灰色** | 纯机械——服务器代码或 hook，每次执行完全相同 |
+| **紫色** | 分图入口——总图中代表一整张分图的位置 |
+| 虚线边框（保留受众色） | 计划新增，尚不存在 |
+| 粗边框（保留受众色） | 计划修改既有步骤——**必须显式写明"当前：… / 修改后：…"**（目前没有此类节点：现存全部计划项都是附加式，此规则为将来备用） |
+| 实线箭头 | v1.2.2 已存在的流程 |
+| 虚线箭头 | 计划中的流程 |
+
+混合步骤拆成按角色的多个节点（"AI 请求同意"是蓝、"开发者输入同意原话"是绿、"服务器记审计行"是灰）——这个拆分本身就是重点：它显示人到底在环的哪里。
 
 ```mermaid
 flowchart LR
-    A["green = developer"]:::human --> B["blue = AI agent"]:::ai --> C["gray = mechanical"]:::mech
-    D["yellow dashed = planned add"]:::planned -.-> E["orange thick = planned modify"]:::modified
+    A["绿 = 开发者"]:::human --> B["蓝 = AI"]:::ai --> C["灰 = 机械"]:::mech --> P["紫 = 分图入口"]:::mod
+    D["虚线边框 = 计划新增<br/>（保留受众色）"]:::plantai -.-> E["虚线箭头 = 计划流程"]:::plantai
     classDef human fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
     classDef ai fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
     classDef mech fill:#eceff1,stroke:#546e7a,color:#37474f
-    classDef planned fill:#fffde7,stroke:#f9a825,stroke-dasharray:5 5,color:#795548
-    classDef modified fill:#fff3e0,stroke:#ef6c00,stroke-width:3px,color:#bf360c
+    classDef mod fill:#f3e5f5,stroke:#6a1b9a,color:#4a148c,stroke-width:2px
+    classDef plantai fill:#e3f2fd,stroke:#1565c0,stroke-dasharray:5 5,color:#0d47a1
 ```
 
-Mixed steps are split into per-actor nodes (e.g. "AI asks for consent" is blue, "developer types the consenting words" is green, "server records the row" is gray), because the split itself is the point: it shows exactly where the human is in the loop.
+### 0.3 先泼五盆冷水（常见误会）
 
-### 0.2 Cold water first — five common misconceptions
-
-1. **Misconception: the injected digest is for you.** It is for the *agent* — a verbatim slice so the AI starts each session holding the core. Your surface is the conversation (presentations, menus, consent requests), never the injection channel.
-2. **Misconception: handoff.md "rolling forward" means old versions are lost.** Every rewrite first freezes the replaced version to `archive/handoff-<n>.md`. Nothing is ever deleted.
-3. **Misconception: protected references block writes.** They are tamper-*evidence* (SHA-256, report-only), not write-gating. Only DATUM itself is write-gated.
-4. **Misconception: high oscillation blocks progress.** The oscillation metric is a labeled reference value — it never gates anything and is never a threshold (explicit user decision).
-5. **Misconception: you could ask the AI to just edit the files by hand.** It must refuse: every `.keel/` write goes through `keel_*` tools; the skill's iron rule 1 and the server's ownership of the log enforce it. Even `keel_write_section` on `amendments` is rejected.
+1. **误会：注入的 digest 是给你看的。** 它是给 *agent* 的——一段原文切片，让 AI 每个会话都握着核心。你的界面是对话（推导展示、菜单、同意请求），不是注入通道。
+2. **误会：handoff.md "滚动"意味着旧版丢了。** 每次重写前，被替换的版本先冻结到 `archive/handoff-<n>.md`。任何东西都不删除。
+3. **误会：保护引用会拦截写入。** 它是防篡改*证据*（SHA-256、只报告），不是写门禁。只有 DATUM 本身是写门禁。
+4. **误会：振荡值高会卡流程。** 振荡是明确标注的参考值——永不作为阈值、永不触发门禁（用户明确决定）。
+5. **误会：你可以让 AI 直接手改文件。** 它必须拒绝：所有 `.keel/` 写入走 `keel_*` 工具；skill 铁律 1 与服务器对日志的所有权共同保证。连对 `amendments` 的 `keel_write_section` 都会被拒。
 
 ---
 
-## 1. Master lifecycle
+## 1. 总图（常驻层）
 
 ```mermaid
 flowchart TD
-    DORM["No .keel — plugin dormant<br/>skill stays silent, hooks emit nothing"]:::mech
-    ACT["Developer starts or continues<br/>a Keel design flow"]:::human
-    INIT["keel_init — scaffold .keel/<br/>3 files + state.json + probes/ + archive/"]:::mech
-    CONCEPT["CONCEPT phase<br/>derivation chains D1–D6 · challenges · terms · ledger"]:::ai
-    G1["G1 gate — concept converged?"]:::mech
-    TECH["TECH phase<br/>contract index + TECHNICAL T1–T9 · decision menus"]:::ai
-    G2["G2 gate — join integrity + user review"]:::mech
-    HO["HANDOFF phase<br/>handoff.md snapshot · rolls on every amendment"]:::mech
-    BUILD["Plan / build workflows<br/>consume handoff bundle"]:::ai
-    STEW["STEWARD — resident in every session<br/>wherever .keel exists"]:::ai
+    DORM["无 .keel —— 插件休眠<br/>skill 不触发 · hooks 静默"]:::mech
+    START["开发者发起 / 继续设计流"]:::human
+    M1["① 激活与 CONCEPT<br/>提取需求 · 推导链 D1–D6 · 挑战 · 术语 · 迭代"]:::mod
+    M2["② 写入路径与同意机制<br/>所有 .keel 写入的必经之路<br/>分层 · 暂存 · 防覆盖 · 审计行"]:::mod
+    M3["③ 门禁与阶段转移<br/>G1 概念门 · G2 联结门 · phase 硬门禁"]:::mod
+    M4["④ TECH 与 HANDOFF<br/>契约索引 + TECHNICAL · 决策菜单 · 滚动交付"]:::mod
+    HO["handoff.md 滚动快照<br/>DATUM + TECHNICAL 捆绑包"]:::mech
+    BUILD["计划 / 构建工作流消费捆绑包"]:::ai
+    SESSION["新会话（.keel 存在的目录）"]:::human
+    M5["⑤ STEWARD · 会话自举与重同步"]:::mod
+    M6["⑥ STEWARD · 漂移防御"]:::mod
+    M7["⑦ 保护引用生命周期"]:::mod
+    M8["⑧ 维护与体检"]:::mod
 
-    DORM --> ACT --> INIT --> CONCEPT
-    CONCEPT -->|"challenge → revise loop (many rounds)"| CONCEPT
-    CONCEPT --> G1
-    G1 -->|"pass + phase tech"| TECH
-    G1 -->|"fail: weak principles / no sign-off"| CONCEPT
-    TECH --> G2
-    G2 -->|"pass + phase handoff"| HO
-    G2 -->|"fail: unfilled items / broken joins"| TECH
+    DORM --> START --> M1
+    M1 <-->|"全部写入必经② / 审计行·staleRefs 回流"| M2
+    M1 -->|"推导收敛 · P* 已逐条签收"| M3
+    M3 -->|"G1 通过 → phase=tech"| M4
+    M3 -->|"G1 未过：原则太弱 / 未签收"| M1
+    M4 <-->|"全部写入必经②（索引=核心层）"| M2
+    M4 -->|"九项齐备 + 用户复核"| M3
+    M3 -->|"G2 通过 → phase=handoff<br/>服务器机械写 handoff.md"| HO
+    M3 -->|"G2 未过：回填 T 项 / 修联结"| M4
     HO --> BUILD
-    STEW -.->|"overlays ALL phases after activation"| CONCEPT
-    AMM["Core amendment in ANY phase<br/>(consent flow, §4)"]:::human
-    AMM -->|"in handoff phase: roll snapshot"| HO
+    M2 -->|"handoff 阶段每次落盘：<br/>滚动刷新 · 旧版冻结 archive/"| HO
+    SESSION --> M5
+    M5 -->|"自举后进入任意任务"| M6
+    M6 -->|"触及核心 → 走②的同意流程"| M2
+    M2 -->|"confirm 返回 staleRefs"| M7
+    M7 -->|"重纳需核心同意（走②）"| M2
+    M5 -->|"会话内按需调用"| M8
     classDef human fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
     classDef ai fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
     classDef mech fill:#eceff1,stroke:#546e7a,color:#37474f
+    classDef mod fill:#f3e5f5,stroke:#6a1b9a,color:#4a148c,stroke-width:2px
 ```
 
-Two things this coarse map hides and the detail sections show: the **write path** (§4) runs under every phase and is where consent happens; and **STEWARD's session bootstrap** (§7) is what makes the design survive across sessions.
+总图压缩掉、由分图展开的三件事：**②** 是横切机制——CONCEPT/TECH/HANDOFF/build 任何阶段的写入都走它，同意就发生在这里；**⑤** 让设计跨会话存活；BUILD 之后 STEWARD 仍常驻（⑥挂在每个任务前）。
 
 ---
 
-## 2. What lives on disk
-
-| Path | Protection level | Owner | What it is |
-|---|---|---|---|
-| `.keel/DATUM.md` | **L1 write-gated** | server (via consent flow) | The guarded core: `00 Intent` · `G Glossary` · `01 Concept (P1–P5 + concept model + parking lot)` · `02 Trade-off Ledger` · `03 Contract Index (thin)` · `R Protected References` |
-| `.keel/TECHNICAL.md` | L0 derived | server | T1–T9 elaboration, each item back-linked `contracts: Cn` |
-| `.keel/AMENDMENTS.md` | append-only | **server only** | Every change, one row: `# / time / tier / location / summary / supersedes / consent` |
-| `.keel/handoff.md` | derived, rolls | server | DATUM + TECHNICAL bundle with `Snapshot @ amendment #N` header |
-| `.keel/state.json` | internal | server | `phase` · `proposals` (staged) · `seq` counters · `gates` results · `coreCount` (lifetime) |
-| `.keel/probes/` | evidence | AI writes, user reads | Skeleton-test outputs and other verification artifacts |
-| `.keel/archive/` | frozen copies | server | `handoff-<n>.md`, `amendments-<n>.md` — never deleted |
-
-**Who may touch what** (the whole safety argument in one matrix):
-
-| Actor | DATUM / TECHNICAL / AMENDMENTS | state.json | probes/ |
-|---|---|---|---|
-| Developer | never directly — speaks consent words in conversation | — | reads |
-| AI agent | only via `keel_*` tool calls; hand edits forbidden by iron rule | via tools | writes |
-| Server | sole writer; validates, tiers, logs | sole writer | — |
-
-Planned additions to this table (§9): `.keel/probes/battery.md` (P2) and `.keel/MODEL.md` (P4).
-
----
-
-## 3. Activation & CONCEPT phase in detail
+## 2. 分图①：激活与 CONCEPT
 
 ```mermaid
 flowchart TD
-    subgraph H["Developer — what you perceive"]
-    STATE["State the goal, requirements,<br/>success criteria, out-of-scope"]:::human
-    CONF["Confirm extracted R1..Rn<br/>item by item"]:::human
-    READ["Read derivation chains,<br/>increment cards (planned), menus"]:::human
-    CHAL["Attack a step — challenge an assumption,<br/>a tension, a rejected route"]:::human
-    FORK["Adjudicate a genuine D3/D4 fork<br/>(multi-candidate mode only)"]:::human
-    SIGN["Sign off each P* in priority order<br/>(weighted priorities, not invariants)"]:::human
+    subgraph H["开发者 —— 你能感知的"]
+    STATE["陈述目标 / 需求 / 成功标准 / 范围外"]:::human
+    CONF["逐条确认提取出的 R1..Rn"]:::human
+    READ["阅读推导链、增量卡（计划）、菜单"]:::human
+    CHAL["攻击某一步 —— 挑战假设、张力或被拒路线"]:::human
+    FORK["裁决 D3/D4 处的真分叉<br/>（仅多候选模式）"]:::human
+    SIGN["按优先序逐条签收 P*<br/>（加权优先级，非不变量）"]:::human
     end
-
-    subgraph A["AI agent — skill-driven behavior"]
-    EXTRACT["Extract goal/scope/R* keeping user wording"]:::ai
-    DCHAIN["Derivation chain D1→D6:<br/>facts → tensions → [fact/assumption/inference] insights →<br/>principles P1–P5 → concept model → rejected routes"]:::ai
-    TERM["Register load-bearing terms<br/>in the same turn they first appear"]:::ai
-    RIP["Show ripple of the attacked step —<br/>which later steps change (delta form)"]:::ai
-    SKEL["Skeleton test: rebuild the concept model<br/>from 00 + P* alone"]:::ai
-    ITER["Iteration — manual invocation only:<br/>stress-test · alt-insight · constraint probe · skeleton<br/>declare prediction first, record deviation"]:::ai
-    CARD["Increment card — at each derivation milestone<br/>show only what is NEW in the model (planned P1)"]:::planned
-    BAT["Generate battery entries from commitments,<br/>expected answers written at generation time (planned P2)"]:::planned
-    CONV["Convergence self-check — entity saturation,<br/>battery answerable, model stable (planned P5)"]:::planned
+    subgraph A["AI —— skill 驱动"]
+    EXTRACT["提取目标/范围/R*，保留用户原话"]:::ai
+    DCHAIN["推导链 D1→D6：<br/>需求事实→张力→洞察[事实/假设/推理]→<br/>原则 P1–P5→概念模型→被拒路线"]:::ai
+    TERM["术语首次出现的同一回合内注册"]:::ai
+    RIP["展示被攻击步骤的波及 → 增量式修订草案"]:::ai
+    PARK["冒出的技术细节 → 01 停车场"]:::ai
+    SKEL["骨架测试：仅凭 00 + P* 重建概念模型"]:::ai
+    ITER["迭代（仅手动触发）：压力测试·备选洞察·<br/>约束探针·骨架测试；先声明预测再执行"]:::ai
+    CARD["增量卡（计划 P1）：每个推导里程碑后<br/>≤5 行，只列模型新增/改变的实体·规则·失败方式"]:::plantai
+    BATGEN["生成电题（计划 P2）：从 DATUM 承诺出题，<br/>预期答案出题时即写（预注册）"]:::plantai
+    CONV["收敛自检（计划 P5）：实体饱和·<br/>电题可承诺·模型稳定三判据"]:::plantai
     end
-
-    subgraph M["Mechanical"]
-    INIT2["keel_init {project} — refuses overwrite<br/>unless force=true"]:::mech
-    W00["Stage 00 write at core level —<br/>your per-item confirmation quotes as consent_evidence"]:::mech
-    PROPOSE["keel_write_section / keel_glossary_register<br/>→ tier machinery, §4"]:::mech
-    GATE1["keel_gate g1 — 7 checks (§5)"]:::mech
-    PHASE1["keel_phase to tech — hard gate"]:::mech
+    subgraph M["机械"]
+    INIT["keel_init —— 已有 .keel 时拒绝<br/>（除非 force=true）"]:::mech
+    W00["暂存 00 写入（核心层）——<br/>逐条确认的原话即 consent_evidence"]:::mech
+    PROPOSE["keel_write_section / keel_glossary_register<br/>→ 进入②的分层机制"]:::mech
     end
 
     STATE --> EXTRACT --> CONF
-    CONF -->|"their words are quoted as evidence"| W00
+    CONF -->|"确认原话被引用为证据"| W00
     W00 --> DCHAIN --> READ
     DCHAIN -.-> CARD
-    DCHAIN -.-> BAT
+    DCHAIN -.-> BATGEN
     READ --> CHAL --> RIP --> DCHAIN
-    DCHAIN -->|"genuine fork at D3/D4 only"| FORK
+    DCHAIN -->|"仅当 D3/D4 出现真分叉"| FORK
+    PARK --> PROPOSE
     TERM --> PROPOSE
     DCHAIN --> SIGN
     SIGN -.-> CONV
-    CONV -.-> GATE1
-    GATE1 --> SKEL --> GATE1
+    CONV -.->|"提示可以提请 G1"| SIGN
     ITER -.-> CARD
     classDef human fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
     classDef ai fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
     classDef mech fill:#eceff1,stroke:#546e7a,color:#37474f
-    classDef planned fill:#fffde7,stroke:#f9a825,stroke-dasharray:5 5,color:#795548
+    classDef plantai fill:#e3f2fd,stroke:#1565c0,stroke-dasharray:5 5,color:#0d47a1
 ```
 
-Rules the diagram compresses:
+图压缩不掉的规则：
 
-- **Derivation shape is mandatory** — every concept design is presented as a D1–D6 chain; a chain with no rejected alternative (D6 ≥ 1) is not trustworthy by protocol.
-- **Challenge protocol**: attack → ripple (keel_ripple where contracts/terms are involved) → revised chain drafted as delta → core proposal → consent → confirm → ledger revision entry ("old belief → new evidence → new principle", `overturns` filled).
-- **Requirement refinement co-evolves**: gaps the concept exposes go back into 00 as core proposals to the developer — never silently absorbed.
-- **Altitude cap**: concept-phase output contains no class names, no stack choices; technical details that surface go to the 01 *parking lot*.
-- **Battery (planned P2)** lives in `.keel/probes/battery.md`; the developer self-tests outside the conversation, and only divergences come back into it — see §9 for the format.
+- **推导形状是强制的**——每个概念设计都以 D1–D6 链呈现；没有完整被拒路线（D6 ≥ 1）的推导按协议不可信。
+- **挑战协议**：攻击 → 波及（涉及契约/术语时 `keel_ripple`）→ 增量式修订链 → 核心提案 → 同意 → confirm → 02 台账记修订条目（"旧信念→新证据→新原则"，填 `overturns`）。
+- **需求共同演化**：概念暴露的缺口以核心提案的形式回到 00 提请开发者裁决——禁止静默吸收。
+- **高度上限**：概念阶段产出不含类名、不含技术选型；细节进 01 *停车场*。
+- **电题（计划 P2）**存于 `.keel/probes/battery.md`；开发者自测在对话之外进行，只有分歧回到对话里——格式与设计见 §12。
 
 ---
 
-## 4. The write path & consent machinery (runs under every phase)
+## 3. 分图②：写入路径与同意机制（横切所有阶段）
 
-This is Keel's heart. Everything that changes `.keel/` flows through here.
+这是 Keel 的心脏。任何改变 `.keel/` 的东西都从这里走。
 
 ```mermaid
 flowchart TD
-    WANT["AI intends a content change<br/>(section write, term, ref add/remove)"]:::ai
-    SHOW["For core: show rationale + ripple to the developer<br/>BEFORE asking for consent"]:::ai
-    ASK["Ask for explicit consent<br/>(consent-economy rule applies first, below)"]:::ai
-    TYPE["Developer types consenting words"]:::human
-    ECON{"Verbatim user instruction<br/>and ripple closure empty?"}:::ai
-    CALL["keel_write_section — single section+content<br/>OR sections batch (one logical change)"]:::ai
-    VAL["Validation: known section · no amendments writes ·<br/>no duplicate section in batch · content non-empty ·<br/>no '## ' headings inside sections · summary ≤120 chars"]:::mech
-    RAT{"Core level and<br/>rationale under 8 chars?"}:::mech
-    CLOS["Closure scan — mechanically extract core-touching refs:<br/>index implements col · technical contracts→index join ·<br/>glossary load-bearing col · refs carries col"]:::mech
-    UNIDX{"contracts: id<br/>not in index?"}:::mech
-    ESC{"Declared peripheral<br/>but closure non-empty?"}:::mech
+    WANT["AI 想修改内容<br/>（段落写入·术语·保护引用增删）"]:::ai
+    ECON{"用户原话已明确指定该改动<br/>且波及 closure 为空？"}:::ai
+    SHOW["核心项：先向开发者展示理由 + 波及，<br/>再请求同意"]:::ai
+    ASK["请求明确同意"]:::ai
+    TYPE["开发者输入同意原话"]:::human
+    CALL["keel_write_section —— 单段 section+content<br/>或批量 sections（一次逻辑变更）"]:::ai
+    VAL["机械校验：段落合法 · 禁写 amendments ·<br/>批内无重复段 · 内容非空 · 段内禁 '## ' 标题 ·<br/>summary ≤120 字符"]:::mech
+    RAT{"核心层且<br/>rationale 少于 8 字符？"}:::mech
+    CLOS["closure 扫描——机械提取触核心引用：<br/>索引 implements 列 · technical 的 contracts→索引联结 ·<br/>术语 load-bearing 列 · 引用 carries 列"]:::mech
+    UNIDX{"contracts: 的 id<br/>不在索引里？"}:::mech
+    ESC{"声明 peripheral 但<br/>closure 非空？"}:::mech
     EFF["effLevel = core-escalated"]:::mech
-    STAGE["Stage proposal PR-n in state.json:<br/>full content + per-section baseContent snapshot"]:::mech
-    APPLY["Apply immediately · amendment row<br/>consent value 'batch-notified'"]:::mech
-    NOTIFY["Batch-notify developer at session end /<br/>a gate / keel_status"]:::ai
-    CONFIRM["keel_confirm {proposal_id, consent_evidence}"]:::ai
-    EV{"consent_evidence<br/>under 2 chars?"}:::mech
-    CLOB{"Any section changed<br/>since staging?"}:::mech
-    CLOBERR["REFUSE — clobber guard:<br/>error tells AI to keel_reject and re-propose<br/>against current content"]:::mech
-    REJ["keel_reject — discard staging"]:::ai
-    APPLY2["Apply write · append amendment row<br/>consent = yes (quoted words, first 40 chars)"]:::mech
-    LIFT["lifetime core counter +1 if tier contains 'core'"]:::mech
-    HOPH{"Phase is<br/>handoff?"}:::mech
-    ROLL["Roll handoff.md — freeze replaced version<br/>to archive/handoff-n.md · new header Snapshot at amendment N"]:::mech
-    STALE["Compute staleRefs: protected refs whose carries<br/>intersect this change's core refs (pre-apply snapshot)"]:::mech
-    RELAY["Return staleRefs → AI relays list to developer —<br/>owning workflow regenerates; Keel detects, never regenerates"]:::ai
-    BAT2["Flag battery entries anchored to amended<br/>commitments as stale (planned P2)"]:::planned
+    STAGE["暂存提案 PR-n 于 state.json：<br/>完整内容 + 各段 baseContent 基线快照"]:::mech
+    APPLY["立即落盘 · 记审计行<br/>consent 值 batch-notified"]:::mech
+    NOTIFY["会话末 / 门禁 / keel_status 时批量告知开发者"]:::ai
+    CONFIRM["keel_confirm 提案id + consent_evidence"]:::ai
+    EV{"consent_evidence<br/>少于 2 字符？"}:::mech
+    CLOB{"暂存后有任何段落<br/>被别的写入改过？"}:::mech
+    CLOBERR["拒绝——防覆盖：<br/>错误信息指引用 keel_reject 后<br/>按当前内容重新提案"]:::mech
+    REJ["keel_reject —— 丢弃暂存"]:::ai
+    APPLY2["落盘 · 记审计行<br/>consent = yes（原话前 40 字符）"]:::mech
+    LIFT["层级含 core → 终身核心计数 +1"]:::mech
+    HOPH{"当前阶段是<br/>handoff？"}:::mech
+    ROLL["滚动 handoff.md —— 旧版先冻结到<br/>archive/handoff-n.md · 新头 Snapshot at amendment N"]:::mech
+    STALE["计算 staleRefs：保护引用的 carries 与本次<br/>核心引用相交者（对照落盘前快照）"]:::mech
+    RELAY["返回 staleRefs → AI 转达开发者——<br/>再生归拥有方工作流；Keel 只检测、绝不再生"]:::ai
+    BAT2["锚定在被改承诺上的电题条目<br/>随之过期（计划 P2）"]:::planmech
 
     WANT --> ECON
-    ECON -->|"yes — instruction itself is evidence"| CALL
-    ECON -->|"no — must show ripple first"| SHOW --> ASK --> TYPE --> CONFIRM
+    ECON -->|"是——原话本身即证据"| CALL
+    ECON -->|"否——必须先展示波及"| SHOW --> ASK --> TYPE --> CONFIRM
     WANT --> CALL
     CALL --> VAL --> RAT
-    RAT -->|"yes → validation error"| CALL
-    RAT -->|"no"| CLOS --> UNIDX
-    UNIDX -->|"yes → 'Cn(unindexed)' joins closure"| ESC
-    UNIDX -->|"no"| ESC
-    ESC -->|"yes"| EFF --> STAGE
-    ESC -->|"no"| APPLY --> NOTIFY
+    RAT -->|"是 → 校验错误，补足理由重调"| CALL
+    RAT -->|"否"| CLOS --> UNIDX
+    UNIDX -->|"是 → 'Cn(未索引)' 进入 closure"| ESC
+    UNIDX -->|"否"| ESC
+    ESC -->|"是"| EFF --> STAGE
+    ESC -->|"否"| APPLY --> NOTIFY
     STAGE --> CONFIRM --> EV
-    EV -->|"yes → error"| ASK
-    EV -->|"no"| CLOB
-    CLOB -->|"yes"| CLOBERR --> REJ
-    CLOB -->|"no"| APPLY2 --> LIFT --> HOPH
-    HOPH -->|"yes"| ROLL --> STALE
-    HOPH -->|"no"| STALE
+    EV -->|"是 → 报错补证据"| ASK
+    EV -->|"否"| CLOB
+    CLOB -->|"是"| CLOBERR --> REJ
+    CLOB -->|"否"| APPLY2 --> LIFT --> HOPH
+    HOPH -->|"是"| ROLL --> STALE
+    HOPH -->|"否"| STALE
     STALE -.-> BAT2
     STALE --> RELAY
     classDef human fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
     classDef ai fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
     classDef mech fill:#eceff1,stroke:#546e7a,color:#37474f
-    classDef planned fill:#fffde7,stroke:#f9a825,stroke-dasharray:5 5,color:#795548
+    classDef planmech fill:#eceff1,stroke:#546e7a,stroke-dasharray:5 5,color:#37474f
 ```
 
-Facts the diagram compresses:
+图压缩不掉的事实：
 
-- **What counts as core-touching**: a reference matching `^(P\d|01|00)` — a principle id, or a pointer into `01 Concept` / `00 Intent`. Everything else is peripheral unless escalated.
-- **Batch = one logical change**: `sections:[{section,content},…]` — one consent, one amendment row, and the sections cannot drift apart between writes. The protocol *mandates* the batch form for index+technical changes and for any requirement change spanning 00+01+ledger.
-- **Glossary and refs ride the same machinery**: `keel_glossary_register` computes the tier itself (load-bearing at P*/01/00 ⇒ core); `keel_ref_add` / `keel_ref_remove` always propose at core level (they change the protection boundary).
-- **The anti-clobber guard fired live** in the Codex pilot: a second proposal staged on a section that had changed underneath was refused at confirm; the correct recovery (reject + re-propose) is what the error message itself instructs.
-- **Consent economy (iron rule 2)**: the AI may treat a user message that specifies a change verbatim as consent **only** when it computed the ripple closure first and the closure is empty. Otherwise: stop, show the ripple — the developer may decide differently after seeing it.
+- **什么算触核心**：引用匹配 `^(P\d|01|00)`——原则 id，或指向 `01 Concept` / `00 Intent` 的引用。其余皆外围，除非被 closure 升级。
+- **批量 = 一次逻辑变更**：`sections:[{section,content},…]`——一次同意、一行审计，且各段不会在两次写入之间漂移。协议*强制*索引+technical 用批量形式；跨 00+01+台账的需求变更同理。
+- **术语与保护引用走同一机制**：`keel_glossary_register` 自行算层级（load-bearing 于 P*/01/00 ⇒ 核心）；`keel_ref_add` / `keel_ref_remove` 恒以核心层提案（它们改变保护边界）。
+- **防覆盖守卫在实测中真实触发过**：Codex 试点中第二个提案因底层段落已变在 confirm 处被拒；正确恢复路径（reject + 重提）就写在错误信息里。
+- **同意经济（铁律 2）**：仅当 AI 先算过波及 closure 且 closure 为空，才可把"逐字指定了改动"的用户消息当作同意。否则：停下、展示波及——开发者看完波及可能会改主意。
 
 ---
 
-## 5. Gates & phase transitions
+## 4. 分图③：门禁与阶段转移（G1 / G2 内部）
 
 ```mermaid
 flowchart TD
-    subgraph G1["G1 — CONCEPT → TECH"]
-    M1["Mechanical checks (7):<br/>00 goal filled · out-of-scope filled · ≥1 requirement ·<br/>principles 3–5 · ≥1 ledger entry · ≥1 glossary term ·<br/>skeleton-test slot (starts false)"]:::mech
-    S1["Skeleton test (semantic): rebuild concept model<br/>from 00 + P* alone — fresh process preferred<br/>(labeled), self-simulation must be labeled"]:::ai
-    R1["Sign-off review (semantic): developer signs each P*<br/>in priority order — recorded in the ledger"]:::human
-    REC1["keel_gate_record with evidence ≥4 chars<br/>(probe file path, review reference)"]:::mech
-    B1["Battery round as the review form —<br/>incl. bad-world questions (planned P2)"]:::planned
+    subgraph G1S["G1 —— CONCEPT → TECH"]
+    M1C["机械检查（7 项）：<br/>00 目标已填 · 范围外已填 · ≥1 条需求 ·<br/>原则 3–5 条 · ≥1 条台账 · ≥1 个术语 ·<br/>骨架测试槽（初始为 false）"]:::mech
+    S1["骨架测试（语义项）：仅凭 00 + P* 重建概念模型——<br/>优先真外部信号（新进程重建，标注 external），<br/>无子代理设施才允许自模拟且必须标注"]:::ai
+    R1["签收评审（语义项）：开发者按优先序<br/>逐条签收每个 P* —— 记入 02 台账"]:::human
+    B1["电池轮作为评审形式（计划 P2）：<br/>重点压坏世界题（失败·并发·边界）"]:::planhuman
     end
-    subgraph G2["G2 — TECH → HANDOFF"]
-    M2["Mechanical checks (13): nine TECHNICAL items filled<br/>with resolvable contracts · index non-empty ·<br/>every row has implements+detail · join resolves both ways ·<br/>user-review slot (starts false)"]:::mech
-    R2["Review (semantic): developer reads index +<br/>TECHNICAL summary + decision points"]:::human
-    REC2["keel_gate_record — user reviewed"]:::mech
+    subgraph G2S["G2 —— TECH → HANDOFF"]
+    M2C["机械检查（13 项）：九个 TECHNICAL 项填实且 contracts 可解 ·<br/>索引非空 · 每行有 implements+detail ·<br/>联结双向可解 · 用户复核槽（初始为 false）"]:::mech
+    R2["复核（语义项）：开发者读索引 +<br/>TECHNICAL 摘要 + 全部决策点"]:::human
     end
-    PH["keel_phase — HARD GATE:<br/>to tech requires G1.pass · to handoff requires G2.pass"]:::mech
-    SNAP["On entering handoff: server bundles handoff.md<br/>(DATUM + TECHNICAL, Snapshot @ #N header)"]:::mech
-    FAIL1["Gate not passed → keel_phase throws;<br/>fix the failing items first"]:::mech
+    REC["keel_gate_record —— 语义记录，证据 ≥4 字符<br/>（探针文件路径、评审出处）"]:::mech
+    PH["keel_phase —— 硬门禁：<br/>to tech 需 G1.pass · to handoff 需 G2.pass"]:::mech
+    SNAP["进入 handoff：服务器机械打包 handoff.md<br/>（DATUM + TECHNICAL + 快照头）"]:::mech
+    FAIL["门禁未过 → keel_phase 直接报错；<br/>先回去补齐未过项"]:::mech
 
-    M1 --> S1 --> REC1
-    R1 --> REC1
-    REC1 -.-> B1
-    M2 --> R2 --> REC2
-    REC1 --> PH
-    REC2 --> PH
-    PH -->|"pass"| SNAP
-    PH -->|"refuse"| FAIL1
+    M1C --> S1 --> REC
+    R1 --> REC
+    REC -.-> B1
+    M2C --> R2 --> REC
+    REC --> PH
+    PH -->|"通过"| SNAP
+    PH -->|"拒绝"| FAIL
     classDef human fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
     classDef ai fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
     classDef mech fill:#eceff1,stroke:#546e7a,color:#37474f
-    classDef planned fill:#fffde7,stroke:#f9a825,stroke-dasharray:5 5,color:#795548
+    classDef planhuman fill:#e8f5e9,stroke:#2e7d32,stroke-dasharray:5 5,color:#1b5e20
 ```
 
-The two semantic slots are deliberately *not* machine-checkable: the server marks them false and only `keel_gate_record` (with evidence) can turn them on. Everything else on the checklist is computed from the files.
+两个语义槽**故意**设计成机器查不了：服务器先标 false，只有带证据的 `keel_gate_record` 能点亮它们。清单上其余各项全部由文件内容计算得出。
 
 ---
 
-## 6. TECH & HANDOFF
+## 5. 分图④：TECH 与 HANDOFF
 
 ```mermaid
 flowchart TD
-    subgraph T["TECH phase"]
-    AUTHOR["AI authors index row + TECHNICAL item<br/>as ONE batched proposal:<br/>sections: index + technical"]:::ai
-    IDX["03 Contract Index — thin, core tier:<br/>Cn · one-line contract · implements P* · detail T#"]:::mech
-    TECHF["TECHNICAL.md — derived (L0):<br/>T1..T9, each with contracts: Cn back-links"]:::mech
-    MENU["Decision menu for every fork:<br/>options + recommendation + reasoning +<br/>cost of choosing wrong — recorded in ledger"]:::ai
-    FEEL["Each option also says what the developer<br/>would FEEL differently in program behavior (planned P3)"]:::planned
-    CHOOSE["Developer chooses from the menu —<br/>never has to read the full elaboration"]:::human
+    subgraph T["TECH 阶段"]
+    AUTHOR["AI 把索引行 + TECHNICAL 项作为<br/>同一个批量提案起草：<br/>sections: index + technical"]:::ai
+    IDX["03 契约索引 —— 薄，核心层：<br/>Cn · 一行契约 · implements P* · detail T#"]:::mech
+    TECHF["TECHNICAL.md —— 派生（L0）：<br/>T1..T9，各带 contracts: Cn 回链"]:::mech
+    MENU["每个分叉出决策菜单：<br/>选项 + 推荐 + 理由 + 选错的代价 —— 选择记入台账"]:::ai
+    FEEL["每个选项再附一行可感差异（计划 P3）：<br/>选它 vs 不选它，程序行为上你能感觉到什么"]:::plantai
+    CHOOSE["开发者从菜单选择——<br/>永远不必读完整技术展开"]:::human
     end
-    subgraph HO["HANDOFF phase"]
-    BUNDLE["handoff.md = DATUM + TECHNICAL + header<br/>'a plan/build phase makes no further design decisions'"]:::mech
-    ROLLH["Every applied amendment rolls handoff.md:<br/>freeze old to archive/handoff-n.md first"]:::mech
-    FRZ["Freeze marker — pin a version that does NOT roll<br/>(deferred: only if real use shows the need; today's exit<br/>is taking archive/handoff-n.md) (planned P6)"]:::planned
+    subgraph HO2["HANDOFF 阶段"]
+    BUNDLE["handoff.md = DATUM + TECHNICAL + 头部说明：<br/>'计划/构建阶段接收后不再做设计决策'"]:::mech
+    ROLLH["每次落盘的修正案都滚动 handoff.md：<br/>旧版先冻结到 archive/handoff-n.md"]:::mech
+    FRZ["冻结标记（缓期 P6）：钉住一个不滚动的版本。<br/>仅在真实使用出现此需求时实施；<br/>当前出路是取 archive/handoff-n.md"]:::planmech
     end
+
     AUTHOR --> IDX
     AUTHOR --> TECHF
-    IDX <-->|"join: implements ↔ contracts"| TECHF
+    IDX <-->|"联结：implements ↔ contracts"| TECHF
     MENU -.-> FEEL
     MENU --> CHOOSE
     BUNDLE --> ROLLH
@@ -302,62 +288,71 @@ flowchart TD
     classDef human fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
     classDef ai fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
     classDef mech fill:#eceff1,stroke:#546e7a,color:#37474f
-    classDef planned fill:#fffde7,stroke:#f9a825,stroke-dasharray:5 5,color:#795548
+    classDef plantai fill:#e3f2fd,stroke:#1565c0,stroke-dasharray:5 5,color:#0d47a1
+    classDef planmech fill:#eceff1,stroke:#546e7a,stroke-dasharray:5 5,color:#37474f
 ```
 
-Two invariants worth pinning: `implements:` lives **only** in the index, `contracts:` **only** in TECHNICAL — the join is what makes ripple computable; and a `contracts:` id with no index row escalates the whole write to core (§4), so the two files cannot drift apart even by accident.
+值得钉住的两条不变量：`implements:` **只**住在索引里，`contracts:` **只**住在 TECHNICAL——这个联结是波及可计算的原因；没有索引行的 `contracts:` id 会让整个写入升级为核心（见②），所以两份文件连"意外地"漂开都做不到。
 
 ---
 
-## 7. STEWARD — residency, drift defense, protected references, maintenance
+## 6. 分图⑤：STEWARD · 会话自举与跨会话重同步
 
-### 7.1 Session bootstrap — two audiences, two channels
+两个读者、两条通道——同源不同投影。
 
 ```mermaid
 flowchart TD
-    SESS["New session in a directory<br/>where .keel exists"]:::mech
-    HOOK["SessionStart hook — mechanical:<br/>slice DATUM verbatim → strict-JSON additionalContext"]:::mech
-    INJ["Agent context now holds the digest:<br/>doc pointer · phase · goal/scope/requirements/P* ·<br/>top 6 contracts/terms/refs · last 3 amendments ·<br/>STEWARD reminder line"]:::ai
-    REFRESH["PostToolUse hook after every keel_confirm:<br/>digest re-injected (failed tool calls skipped)"]:::mech
-    FALLBACK["Host without hooks (Codex):<br/>workspace AGENTS.md rule — call keel_digest<br/>at start and after confirmations"]:::ai
-    RECAP["Human re-sync (planned P4): agent reads .keel/MODEL.md<br/>and offers a ≤10-line recap in its first reply —<br/>1 read, 0 generation rounds; optional battery re-take"]:::planned
-    MODEL["MODEL.md — human-facing model file (planned P4):<br/>maintained INSIDE amendment batches (rolls like handoff),<br/>so maintenance costs no extra consent rounds"]:::planned
+    SESS["新会话（.keel 存在的目录）"]:::human
+    HOOK["SessionStart hook —— 机械：<br/>原文切片 DATUM → 严格 JSON additionalContext"]:::mech
+    INJ["agent 上下文从此握有 digest：<br/>文档指针 · 阶段 · 目标/范围/需求/P* ·<br/>前 6 契约/术语/引用 · 最近 3 条修正案 ·<br/>STEWARD 提醒行"]:::ai
+    REFRESH["PostToolUse hook：每次 keel_confirm 后<br/>刷新注入（失败的调用跳过）"]:::mech
+    FALLBACK["无 hook 宿主（Codex）：<br/>工作区 AGENTS.md 规则——会话开始与确认后<br/>调 keel_digest"]:::ai
+    RECAP["人类重同步（计划 P4）：agent 读 .keel/MODEL.md，<br/>首条回复附 ≤10 行速览——1 次读取，0 次生成轮"]:::plantai
+    MODEL["MODEL.md —— 人类版模型文件（计划 P4）：<br/>随核心修正案的同一 batch 滚动更新，<br/>维护不花额外同意轮"]:::planmech
+    SELFTEST["电汔回测（计划 P2）：可选——<br/>自测一轮验证重同步质量"]:::planhuman
 
     SESS --> HOOK --> INJ
     INJ --> REFRESH
-    SESS -->|"no hook support"| FALLBACK
-    SESS -.-> RECAP -.-> MODEL
+    SESS -->|"宿主无 hook"| FALLBACK
+    SESS -.-> RECAP
+    RECAP -.-> MODEL
+    RECAP -.-> SELFTEST
+    classDef human fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
     classDef ai fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
     classDef mech fill:#eceff1,stroke:#546e7a,color:#37474f
-    classDef planned fill:#fffde7,stroke:#f9a825,stroke-dasharray:5 5,color:#795548
+    classDef plantai fill:#e3f2fd,stroke:#1565c0,stroke-dasharray:5 5,color:#0d47a1
+    classDef planmech fill:#eceff1,stroke:#546e7a,stroke-dasharray:5 5,color:#37474f
+    classDef planhuman fill:#e8f5e9,stroke:#2e7d32,stroke-dasharray:5 5,color:#1b5e20
 ```
 
-The digest's first line is the **document pointer** — any other workflow in the session can find the core and derive from it without Keel reading anything else.
+digest 第一行是**文档指针**——会话里任何其它工作流都能凭它找到核心并派生，而无需 Keel 读别的东西。
 
-### 7.2 Pre-edit check — the decision tree the agent runs before any task
+---
+
+## 7. 分图⑥：STEWARD · 漂移防御（每个任务前的决策树）
 
 ```mermaid
 flowchart TD
-    TASK["Any task in a Keel-resident session"]:::ai
-    Q1{"Touches P*, index contracts,<br/>ownership, or module boundaries?"}:::ai
-    UNSURE{"Unsure?"}:::ai
-    RIP["keel_ripple targets →<br/>affectedCore + staleRefs"]:::mech
-    NONE["Proceed — implementation level,<br/>DATUM not involved"]:::ai
-    CONFLICT{"Conflicts with DATUM?"}:::ai
-    STOP["STOP — silent divergence forbidden"]:::ai
-    OPT["Three options presented to developer"]:::ai
-    AMEND["1. Amend — normal consent flow (§4)"]:::human
-    DROP["2. Drop the change"]:::human
-    EXEMPT["3. keel_exempt — reason mandatory,<br/>recorded for audit, consent value 'exempted'"]:::human
-    NEWREQ["New requirement? Diff against 00 FIRST —<br/>conflicts/scope growth become core proposals<br/>with cost + ripple shown, never silent absorption"]:::ai
-    PGUARD["Iteration outputs pass the P* check;<br/>tensions escalate to developer — three exits:<br/>adjust weights / revise iteration / revise principle"]:::ai
+    TASK["Keel 常驻会话中的任意任务"]:::ai
+    Q1{"触及 P*、索引契约、<br/>所有权或模块边界？"}:::ai
+    UNSURE{"不确定？"}:::ai
+    RIP["keel_ripple 目标 →<br/>affectedCore + staleRefs"]:::mech
+    NONE["继续——实现层，DATUM 不涉及"]:::ai
+    CONFLICT{"与 DATUM 冲突？"}:::ai
+    STOP["停——禁止静默分歧"]:::ai
+    OPT["向开发者呈三个选项"]:::ai
+    AMEND["1. 修正——走②的正常同意流程"]:::human
+    DROP["2. 放弃该改动"]:::human
+    EXEMPT["3. keel_exempt——理由必填，<br/>审计行 consent 值 exempted"]:::human
+    NEWREQ["新需求？先对照 00 求差——<br/>冲突/扩围变成核心提案（附代价与波及），<br/>绝不静默吸收"]:::ai
+    PGUARD["迭代产出过 P* 检查；张力升级给开发者——<br/>三出口：调权重 / 改迭代 / 改原则"]:::ai
 
     TASK --> Q1
-    Q1 -->|"no"| NONE
-    Q1 -->|"unsure"| UNSURE --> RIP --> CONFLICT
-    Q1 -->|"yes"| CONFLICT
-    CONFLICT -->|"no"| NEWREQ --> PGUARD
-    CONFLICT -->|"yes"| STOP --> OPT
+    Q1 -->|"否"| NONE
+    Q1 -->|"不确定"| UNSURE --> RIP --> CONFLICT
+    Q1 -->|"是"| CONFLICT
+    CONFLICT -->|"否"| NEWREQ --> PGUARD
+    CONFLICT -->|"是"| STOP --> OPT
     OPT --> AMEND
     OPT --> DROP
     OPT --> EXEMPT
@@ -366,20 +361,22 @@ flowchart TD
     classDef mech fill:#eceff1,stroke:#546e7a,color:#37474f
 ```
 
-### 7.3 Protected references — the L2 lifecycle
+---
+
+## 8. 分图⑦：保护引用生命周期（L2）
 
 ```mermaid
 flowchart TD
-    WRITE["Owning workflow writes/edits a derived doc<br/>(architecture notes, API doc, this mental model…)"]:::ai
-    ADMIT["keel_ref_add path + carries (P*/C* it renders)<br/>→ core consent flow (extends protection boundary)"]:::mech
-    PIN["SHA-256 of the whole file recorded at admission"]:::mech
-    LANDS["A core amendment lands whose core refs<br/>intersect the doc's carries"]:::mech
-    STALE2["keel_confirm returns staleRefs<br/>→ AI relays list to developer"]:::ai
-    REGEN["Owning workflow regenerates the doc<br/>(Keel detects, never regenerates —<br/>it does not know the derivation function)"]:::ai
-    READMIT["Re-admit: remove + add, with consent"]:::mech
-    VERIFY["keel_refs_verify — re-hash all active refs:<br/>file missing or hash diverged → reported,<br/>NEVER blocked (tamper-evidence, not write-gating)"]:::mech
-    RECON["Reconcile: compare index contracts vs code<br/>AND refs vs hashes; label each drift:<br/>stale document → propose amendment ·<br/>rogue code → revert or amend"]:::ai
-    REMOVE["keel_ref_remove — retire from scope<br/>(core consent; the file itself is untouched)"]:::mech
+    WRITE["拥有方工作流写/改派生文档<br/>（架构笔记、API 文档、本心智模型……）"]:::ai
+    ADMIT["keel_ref_add 路径 + carries（它承载的 P*/C*）<br/>→ 核心同意流程（扩展保护边界）"]:::mech
+    PIN["入库时记录整文件 SHA-256"]:::mech
+    LANDS["某核心修正案落盘，其核心引用<br/>与该文档的 carries 相交"]:::mech
+    STALE2["keel_confirm 返回 staleRefs<br/>→ AI 把清单转达开发者"]:::ai
+    REGEN["拥有方工作流再生该文档<br/>（Keel 只检测、绝不再生——<br/>它不知道派生函数）"]:::ai
+    READMIT["重纳：remove + add，需同意"]:::mech
+    VERIFY["keel_refs_verify——重算所有 active 引用的哈希：<br/>文件缺失或内容分叉 → 报告，绝不拦截<br/>（防篡改证据，非写门禁）"]:::mech
+    RECON["reconcile：索引契约对照代码、引用对照哈希；<br/>每处漂移标注方向：文档过期 → 提修正案 ·<br/>代码越轨 → 回退或修正"]:::ai
+    REMOVE["keel_ref_remove——退出保护范围<br/>（核心同意；文件本身不动）"]:::mech
 
     WRITE --> ADMIT --> PIN
     LANDS --> STALE2 --> REGEN --> READMIT
@@ -390,62 +387,97 @@ flowchart TD
     classDef mech fill:#eceff1,stroke:#546e7a,color:#37474f
 ```
 
-### 7.4 Maintenance
+---
 
-- **keel_clean** — orphan `## ` blocks (historical misplacements no tool can reach) are removed and logged as a maintenance row.
-- **keel_compact** — refused below 5 rows; the AI supplies merged summary entries, the server archives the raw log *verbatim* to `archive/amendments-<n>.md` (never deleted) and rewrites the live log with compaction-summary rows. The **lifetime** core counter lives in state.json and survives compaction.
-- **keel_health** — epoch count (since last compaction) + lifetime count, with the basis label; a yellow flag appears above 6 epoch core amendments ("concept may never have converged; consider re-running the skeleton test"). Oscillation (≥2 overturns at the same position) is reported as a **reference metric only**.
-- **keel_status** — phase, gates, counts, pending proposals (abandoned stagings are visible here), batch notifications.
+## 9. 分图⑧：维护与体检
+
+```mermaid
+flowchart TD
+    STATUS["keel_status —— 阶段·门禁·计数·<br/>待定提案（被遗弃的暂存在此可见）·批量告知"]:::mech
+    HEALTH["keel_health —— 双计数：纪元（上次压缩以来）+<br/>终身（state.coreCount，压缩不清零）；<br/>纪元核心修正案 >6 → 黄旗提示<br/>'概念可能从未收敛，考虑重跑骨架测试'"]:::mech
+    OSC["振荡（同位置 ≥2 次 overturns）——<br/>仅参考指标，永不阈值、永不做门禁"]:::mech
+    CLEAN["keel_clean —— 清除任何工具都够不到的<br/>孤儿 '## ' 块，记维护行"]:::mech
+    COMPACT["keel_compact —— 少于 5 条拒绝；<br/>AI 提供合并摘要，服务器把原始日志<br/>逐字归档 archive/amendments-n.md（永不删除）"]:::mech
+    ARCH["archive/ —— handoff-n.md · amendments-n.md<br/>一切冻结副本，永不删除"]:::mech
+
+    STATUS --> HEALTH --> OSC
+    CLEAN --> ARCH
+    COMPACT --> ARCH
+    classDef mech fill:#eceff1,stroke:#546e7a,color:#37474f
+```
 
 ---
 
-## 8. What the AI is told — resident prompt inventory
+## 10. 磁盘上有什么 + 谁能动什么
 
-| # | Source | When it reaches the agent | Gist |
+| 路径 | 保护级 | 所有者 | 是什么 |
 |---|---|---|---|
-| 1 | Skill frontmatter `description` | tool/skill listing every session | Trigger conditions: user asks for Keel flow, mentions DATUM/index/protected refs/skeleton test, **or `.keel/DATUM.md` exists ⇒ resident STEWARD mode** |
-| 2 | `SKILL.md` iron rules | on skill load | 1) semantics=AI, determinism=server, no hand edits; 2) consent tiers + explicit consent + consent economy; 3) concept→purpose→term, same-turn registration; 4) oscillation is reference-only; 5) concept altitude cap + parking lot; 6) protection ladder L0–L3, match response to layer |
-| 3 | `SKILL.md` phase dispatch + quick ref | on skill load | which reference file per phase; `/keel status · check · protect · unprotect · reconcile` mappings |
-| 4 | `references/concept.md` | entering CONCEPT | activation steps; D1–D6 mandatory shape; multi-candidate fork policy; challenge protocol; iteration set with declare-prediction-first; G1 steps incl. skeleton-test variants and labeling |
-| 5 | `references/tech.md` | entering TECH | two-file split; **batch form mandated** for index+technical; implements/contracts placement; concreteness bar; decision-menu discipline; G2 steps; handoff note |
-| 6 | `references/steward.md` | whenever `.keel` exists | bootstrap fallback (call keel_digest if no hooks); pre-edit check; three-option conflict rule; protected-refs lifecycle; reconcile two-direction labeling; maintenance triggers; altitude test |
-| 7 | Hook-injected digest | SessionStart + after every confirm | verbatim slice (never AI-paraphrased): pointer, phase, goal/scope/requirements, P*, top 6 contracts/terms/refs, last 3 amendments, STEWARD reminder |
-| 8 | Server tool descriptions + error messages | every call | each tool's contract; errors are instructive — e.g. the clobber error itself tells the AI to reject and re-propose; the staged-proposal result embeds the consent instruction |
-| 9 | Workspace `AGENTS.md` (Codex adapter) | every session on hook-less hosts | "call keel_digest at session start and after confirmations" |
+| `.keel/DATUM.md` | **L1 写门禁** | 服务器（经同意流程） | 受保护核心：`00 Intent` · `G Glossary` · `01 Concept（P1–P5 + 概念模型 + 停车场）` · `02 Trade-off Ledger` · `03 Contract Index（薄）` · `R Protected References` |
+| `.keel/TECHNICAL.md` | L0 派生 | 服务器 | T1–T9 展开，各项带 `contracts: Cn` 回链 |
+| `.keel/AMENDMENTS.md` | 只追加 | **仅服务器** | 每次变更一行：`# / 时间 / 层级 / 位置 / 摘要 / 取代 / consent` |
+| `.keel/handoff.md` | 派生，滚动 | 服务器 | DATUM + TECHNICAL 捆绑，带 `Snapshot at amendment N` 头 |
+| `.keel/state.json` | 内部 | 服务器 | `phase` · `proposals`（暂存）· `seq` 计数 · `gates` 结果 · `coreCount`（终身） |
+| `.keel/probes/` | 证据 | AI 写，人读 | 骨架测试输出等验证产物 |
+| `.keel/archive/` | 冻结副本 | 服务器 | `handoff-<n>.md`、`amendments-<n>.md` —— 永不删除 |
 
-Planned prompt additions (§9): increment-card discipline (P1), battery protocol (P2), felt-consequence line in menus (P3), re-sync rule (P4), convergence heuristics (P5).
+**谁能动什么**（整个安全论证压在一张矩阵上）：
 
----
-
-## 9. Planned changes register
-
-Nothing here exists yet. **No deletions are planned.** Formats per §0.1.
-
-| Id | Change | Type | Design notes |
+| 角色 | DATUM / TECHNICAL / AMENDMENTS | state.json | probes/ |
 |---|---|---|---|
-| **P1** | Increment cards in derivation presentation | modify (concept protocol) | Each derivation milestone ends with a ≤5-line "model increment" — only NEW/changed entities, rules, failure modes. Working-memory-sized; density auto-reduces when the developer's predictions keep hitting. Not stored — it is conversation-state; D5 is what survives. |
-| **P2** | Prediction battery — `.keel/probes/battery.md` | add (file + protocol) | Accumulating question battery per project. Entry format: question · expected answer in a collapsed `<details>` block · **anchor** (P*/C*/invariant it tests) · admitted date. Expected answers are written **at generation time** from DATUM commitments (preregistration — prevents fitting answers to the respondent). The developer self-tests outside the conversation; **only divergences enter it** (exception-only AI rounds — the round- and context-saving design). An answer that matches nothing in DATUM is a discovered undecided decision, not a question. When an anchored commitment is amended, affected entries go stale with the ripple. G1 review form: a battery round emphasizing bad-world (failure/concurrency/boundary) questions. Optional: consent_evidence may quote a battery answer, making the audit row double as comprehension evidence. |
-| **P3** | Felt-consequence line in decision menus | modify (tech protocol) | Every option gets one sentence: what the developer would perceive differently in program behavior if chosen vs not. Decisions become answerable without holding the full technical model. |
-| **P4** | Human re-sync — `.keel/MODEL.md` | add (file + protocol) | A human-facing model file maintained **inside amendment batches** (rolls like handoff.md — maintenance costs zero extra consent rounds). At session start the agent reads it and offers a ≤10-line recap in its first reply (one read, no generation round); optional battery re-take verifies the re-sync. **This file you are reading is the prototype** — `docs/MENTAL-MODEL.md` plays exactly this role for the Keel repo itself. |
-| **P5** | Convergence self-check heuristics | modify (concept protocol) | Agent-side signals for "push convergence vs keep refining": entity saturation (two full rounds with no new entities/roles/states; arguing copy not rules), battery answerable in commitment voice, model stability. Counter-signal: anyone can say "if … then trouble" and nobody can answer. Reference heuristics, never gates. |
-| **P6** | Freeze marker on rolling handoff | deferred add | Pin a handoff version that does NOT roll. Only if real use shows the need — today's exit is `archive/handoff-<n>.md`. |
+| 开发者 | 从不直接——只在对话里说同意原话 | — | 读 |
+| AI | 只经 `keel_*` 工具；手改被铁律禁止 | 经工具 | 写 |
+| 服务器 | 唯一写入者；校验、分层、记日志 | 唯一写入者 | — |
+
+计划新增（§12）：`.keel/probes/battery.md`（P2）与 `.keel/MODEL.md`（P4）。
 
 ---
 
-## 10. Constants and rules Mermaid cannot show
+## 11. AI 收到了什么 —— 常驻提示词清单
 
-- **Tier boundary regex**: a reference matching `^(P\d|01|00)` touches core. Everything else is peripheral unless closure-escalated.
-- **Numeric constants**: consent evidence ≥ 2 chars (quoted to 40 in the row) · core rationale ≥ 8 chars · summary ≤ 120 chars · gate-record evidence ≥ 4 chars · exemption reason ≥ 4 chars · compaction refused below 5 rows · digest slices: top 6 index rows, top 6 terms, top 6 refs, last 3 amendments · yellow flag above 6 epoch core amendments.
-- **The 19 tools**: init · digest · status · read · ripple · write_section · confirm · reject · gate · gate_record · phase · glossary_register · ref_add · ref_remove · refs_verify · clean · compact · exempt · health.
-- **G2's nine TECHNICAL items**: module boundaries & responsibilities · interface contracts · data model · state machines · error & edge policy · stack choices & versions · acceptance criteria · non-functional constraints · risks & open items.
-- **Semantics/determinism split**: the AI authors content, chooses wording, writes rationales, judges altitude; the server owns file creation, validation, tiering, staging, hashing, gates, phase enforcement, log appends, handoff rolls, digest slicing. Anything programmable is code, never a prompt request.
-- **Host surface** (v1.2.2 lessons): plugin MCP is `<pluginRoot>/.mcp.json`, namespaced `plugin:keel:keel`; hook stdout must be strict JSON (`additionalContext`); all plugin paths anchor at `${CLAUDE_PLUGIN_ROOT}`; release gate = `tests/hostcompat.js` + `tests/smoke.js` (43 checks).
-- **Failure modes and their exits**: abandoned staging → visible in `keel_status` pendingProposals, discard with `keel_reject` · orphan `## ` blocks → `keel_clean` · unindexed contracts id → automatic escalation at write time · protected-doc drift → `keel_refs_verify` report + regenerate + re-admit · corrupted state.json → defaults re-create a conservative state (phase concept) — recover from AMENDMENTS.md which is the durable history.
+| # | 来源 | 到达时机 | 要义 |
+|---|---|---|---|
+| 1 | skill 前置 `description` | 每会话的工具/技能列表 | 触发条件：用户点名 Keel 流程 / 提到 DATUM、索引、保护引用、骨架测试，**或 `.keel/DATUM.md` 存在 ⇒ 常驻 STEWARD 模式** |
+| 2 | `SKILL.md` 铁律 | skill 加载时 | 1) 语义归 AI、确定性归服务器，禁止手改；2) 同意分层 + 明确同意 + 同意经济；3) 概念→目的→术语，同回合注册；4) 振荡仅参考；5) 概念高度上限 + 停车场；6) 保护阶梯 L0–L3，按层应对 |
+| 3 | `SKILL.md` 阶段分派 + 速查 | skill 加载时 | 各阶段读哪份 reference；`/keel status · check · protect · unprotect · reconcile` 的映射 |
+| 4 | `references/concept.md` | 进入 CONCEPT | 激活步骤；D1–D6 强制形状；多候选分叉策略；挑战协议；迭代集合与"先声明预测"；G1 步骤含骨架测试变体与标注要求 |
+| 5 | `references/tech.md` | 进入 TECH | 两文件分工；索引+technical **强制批量**；implements/contracts 的归属；具体度标准线；决策菜单纪律；G2 步骤；handoff 说明 |
+| 6 | `references/steward.md` | `.keel` 存在的任何时候 | 自举回退（无 hook 就调 keel_digest）；pre-edit 检查；冲突三选项；保护引用生命周期；reconcile 双向标注；维护触发；高度测试 |
+| 7 | hook 注入的 digest | SessionStart + 每次 confirm 后 | 原文切片（绝非 AI 转述）：指针、阶段、目标/范围/需求、P*、前 6 契约/术语/引用、最近 3 条修正案、STEWARD 提醒 |
+| 8 | 服务器工具描述 + 错误信息 | 每次调用 | 每个工具的契约；错误自带指引——防覆盖错误直接告诉 AI 去 reject+重提；暂存结果里内嵌同意指令 |
+| 9 | 工作区 `AGENTS.md`（Codex 适配） | 无 hook 宿主的每个会话 | "会话开始与确认后调 keel_digest" |
+
+计划中的提示词增补（§12）：增量卡纪律（P1）、电题协议（P2）、菜单可感差异行（P3）、重同步规则（P4）、收敛自检（P5）。
 
 ---
 
-## Changelog
+## 12. 计划变更登记（均不存在；无删除计划）
 
-| Version | Date | Change |
+| Id | 变更 | 类型 | 设计要点 |
+|---|---|---|---|
+| **P1** | 推导展示中的增量卡 | 附加（AI 行为） | 每个推导里程碑附 ≤5 行"模型增量"——只列新增/改变的实体、规则、失败方式。工作记忆尺寸；开发者预测连续答对时自动降密度。不落盘——它是对话态；D5 是沉淀后的幸存部分。 |
+| **P2** | 预测电题 —— `.keel/probes/battery.md` | 附加（文件 + 协议） | 每项目一份累积电题。条目格式：题目 · 预期答案（折叠 `<details>`）· **锚点**（所测的 P*/C*/不变量）· 收录日期。预期答案**出题时即写**（预注册——防止事后迁就答题者）。开发者对话外自测，**只有分歧进对话**（异常才升级——省轮次、净上下文）。锚不上的题=发现未决决策，不是坏题。锚定承诺被修正 → 相应条目随波及过期。G1 评审形态：一轮重坏世界的电题。可选：consent_evidence 引用电题答案，审计行同时是理解证据。 |
+| **P3** | 决策菜单附可感差异行 | 附加（AI 行为） | 每个选项一句话：选它 vs 不选它，程序行为上你能感觉到什么。让没装完整技术模型的开发者也能决策。 |
+| **P4** | 人类重同步 —— `.keel/MODEL.md` | 附加（文件 + 协议） | 人类版模型文件，**随修正案 batch 滚动**（同 handoff.md 的滚动逻辑——维护零额外同意轮）。会话开始时 agent 读它并在首条回复附 ≤10 行速览（1 次读取，0 次生成轮）；可选电汔回测验证。**本文件就是原型**——`docs/MENTAL-MODEL.md` 对 Keel 仓库扮演的角色，与 `.keel/MODEL.md` 将来对每个项目扮演的角色相同。 |
+| **P5** | 收敛自检启发式 | 附加（AI 行为） | "该推收敛还是继续细化"的 agent 侧信号：实体饱和（连续两轮无新实体/角色/状态；争文案不争规则）、电题可全部以承诺口吻作答、模型稳定。反面信号：有人说"如果到时候……就麻烦了"而无人接得住。参考启发式，永不作门禁。 |
+| **P6** | 滚动 handoff 的冻结标记 | 暂缓 | 钉住一个不滚动的版本。仅当真实使用出现需求——当前出路是 `archive/handoff-<n>.md`。 |
+
+---
+
+## 13. Mermaid 装不下的常量与规则
+
+- **分层边界正则**：引用匹配 `^(P\d|01|00)` 即触核心。其余皆外围，除非被 closure 升级。
+- **数值常量**：consent 证据 ≥2 字符（审计行引用前 40 字符）· 核心 rationale ≥8 字符 · summary ≤120 字符 · gate_record 证据 ≥4 字符 · 豁免理由 ≥4 字符 · 少于 5 条拒绝压缩 · digest 切片：前 6 索引行、前 6 术语、前 6 引用、最近 3 条修正案 · 纪元核心修正案 >6 亮黄旗。
+- **19 个工具**：init · digest · status · read · ripple · write_section · confirm · reject · gate · gate_record · phase · glossary_register · ref_add · ref_remove · refs_verify · clean · compact · exempt · health。
+- **G2 的九个 TECHNICAL 项**：模块边界与职责 · 接口契约 · 数据模型 · 状态机 · 错误与边界策略 · 技术选型与版本 · 验收标准 · 非功能约束 · 风险与未决项。
+- **语义/确定性分工**：AI 写内容、措辞、理由，判断高度；服务器管文件创建、校验、分层、暂存、哈希、门禁、阶段强制、日志追加、handoff 滚动、digest 切片。凡可程序化者皆为代码，绝不交给提示词。
+- **宿主面事实**（v1.2.2 的教训）：插件 MCP = `<pluginRoot>/.mcp.json`，命名空间 `plugin:keel:keel`；hook stdout 必须是严格 JSON（`additionalContext`）；所有插件路径锚定 `${CLAUDE_PLUGIN_ROOT}`；发布门禁 = `tests/hostcompat.js` + `tests/smoke.js`（43 项检查）。
+- **失败模式与出口**：暂存被遗弃 → `keel_status` 的待定提案可见，用 `keel_reject` 丢弃 · 孤儿 `## ` 块 → `keel_clean` · 未索引契约 id → 写入时自动升级 · 保护文档漂移 → `keel_refs_verify` 报告 + 再生 + 重纳 · state.json 损坏 → 回 conservative 默认（阶段 concept）——从 AMENDMENTS.md（持久历史）恢复。
+
+---
+
+## 变更记录
+
+| 版本 | 日期 | 变更 |
 |---|---|---|
-| 1 | 2026-09-23 | Initial, maps Keel v1.2.2; planned register P1–P6 (P2 and P4 designs refined in discussion with the user on 2026-09-23). |
+| 1 | 2026-09-23 | 初版，对应 Keel v1.2.2；计划登记 P1–P6（P2、P4 的设计于 2026-09-23 讨论中定型）。 |
+| 2 | 2026-09-24 | 重构为总-分图结构：§1 总图常驻 + 分图①–⑧（总图中以紫色节点占位）；计划项改为"受众色 + 虚线边框"，停用黄/橙底色；新增粗边框规则（必须显式"当前/修改后"，目前无节点使用）；全文改为中文。 |
