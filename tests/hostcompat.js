@@ -93,14 +93,18 @@ const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 // R4 — packaging-referenced files exist
 {
   const files = [
-    'skills/keel/SKILL.md',
-    'templates/DATUM.md', 'templates/TECHNICAL.md', 'templates/AMENDMENTS.md',
+    'templates/DATUM.md', 'templates/AMENDMENTS.md',
     'mcp/server.js',
   ];
   for (const f of files) ok(fs.existsSync(path.join(root, f)), `file exists: ${f}`);
-  const skill = read('skills/keel/SKILL.md');
-  for (const m of new Set(skill.match(/references\/[A-Za-z0-9_-]+\.md/g) || [])) {
-    ok(fs.existsSync(path.join(root, 'skills', 'keel', m)), `SKILL.md reference exists: ${m}`);
+  const skillsDir = path.join(root, 'skills');
+  const skills = fs.readdirSync(skillsDir).filter(n => fs.existsSync(path.join(skillsDir, n, 'SKILL.md')));
+  ok(skills.length >= 5, `skill count ≥5 (main + iteration tools; got ${skills.length})`);
+  for (const s of skills) {
+    ok(true === (fs.readFileSync(path.join(skillsDir, s, 'SKILL.md'), 'utf8').length > 0), `skill present and non-empty: ${s}`);
+    for (const m of new Set((fs.readFileSync(path.join(skillsDir, s, 'SKILL.md'), 'utf8').match(/references\/[A-Za-z0-9_-]+\.md/g) || []))) {
+      ok(fs.existsSync(path.join(skillsDir, s, m)), `skill ${s}: reference exists: ${m}`);
+    }
   }
 }
 

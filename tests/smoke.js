@@ -1,11 +1,12 @@
 #!/usr/bin/env node
-/* Keel smoke test v1.1: spawns the real MCP server and drives a full lifecycle.
- * Covers: initialize → init (3 files) → core staging/confirm → glossary core
- * escalation → concept → ledger (peripheral) → G1 (mechanical + semantic) →
- * phase hard gate → Contract Index write (core) → TECHNICAL write (peripheral
- * auto-escalated via contracts join) → G2 (join integrity) → handoff bundle →
- * ripple (T→C→P join) → protected refs (add / verify / tamper / remove) →
- * exemption → compaction → health/status → digest doc pointer. */
+/* Keel smoke test v2: spawns the real MCP server and drives the v2 lifecycle.
+ * Covers: initialize → init (DATUM + AMENDMENTS, no TECHNICAL) → draft free
+ * writes (ai-managed) → readiness activation (switches default on, announced)
+ * → staged consent (evidence / anti-clobber / batch one-row) → keel_config
+ * flips (consent off = ai-managed immediate) → protected refs (add / verify /
+ * tamper / staleRefs on core amendment / remove) → exempt → compaction
+ * (lifetime survives) → orphan cleanup → health → digest pointer + mode line
+ * → hook output contract (strict JSON / silence) → notebook mode (factory). */
 'use strict';
 const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
@@ -39,223 +40,203 @@ function rpc(method, params) {
     child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n');
   });
 }
-function call(name, args) { return rpc('tools/call', { name, arguments: args || {} }); }
 async function jcall(name, args) {
-  const r = await call(name, args);
-  if (r.result && r.result.isError) throw new Error(`${name}: ${r.result.content[0].text}`);
-  try { return JSON.parse(r.result.content[0].text); }
-  catch (_) { return r.result.content[0].text; }
+  const r = await rpc('tools/call', { name, arguments: args || {} });
+  const c = r.result && r.result.content && r.result.content[0];
+  if (r.result && r.result.isError) throw new Error(c && c.text);
+  const t = c && c.text;
+  try { return JSON.parse(t); } catch (_) { return t; } // text tools (keel_read, keel_digest)
 }
+
 let failed = 0;
-function ok(cond, msg) {
-  if (cond) console.log('  ok -', msg);
-  else { failed++; console.error('  FAIL -', msg); }
-}
+function ok(c, msg) { console.log((c ? '  ok - ' : '  FAIL - ') + msg); if (!c) failed++; }
 
-const INTENT = `- Goal (one sentence): Send selected text to an AI, with follow-ups able to refer back to earlier selections
-- Success criteria: any earlier selection can be referenced in a follow-up
-- Out of scope: no multimodal input
-- Requirement R1: select-and-ask
-- Requirement R2: follow-ups can refer back to earlier selections`;
+const INTENT = `- Goal (one sentence): A local Markdown notes app whose core value is bidirectional links.
+- Success criteria: Write [[B]] in note A and see who links to it from B.
+- Out of scope: Cloud sync, multi-user editing.
 
-const CONCEPT = `### Design principles P* (current priority order, 3–5 items)
+### Requirements
 
-- P1: user actions mutate context; they never fire requests directly
-- P2: the conversation is the single authoritative source of context (including event expiry rules)
-- P3: the concept model uses everyday words; class names are forbidden
+- Requirement R1: A local Markdown notes app.
+- Requirement R2: Bidirectional links between notes.`;
 
-### Concept model (entities / flows / boundaries / invariants; no class names)
+const CONCEPT = `### Principles (weighted priorities)
 
-user action → context event → conversation state → request
-invariant: everything in a conversation that influences answers enters via context events
+- P1: Files are the single source of truth; every index is a rebuildable cache.
+- P2: Links address notes by their visible name, stored as plain text.
+- P3: Renaming rewrites all mentions synchronously.
 
-### Parking lot (technical details surfaced during concept phase, deferred to the technical phase)
+### Concept model
+
+Entities: note (a plain .md file), link (a [[name]] mention), index (derived, rebuildable). Flows: open → render from current index; rename → targeted rewrite of mentions. Invariants: deleting the index never loses information; unresolved links stay visible.
+
+### Parking lot
 
 - (empty)`;
 
-const LEDGER = `### L1 Concept sign-off [decision]
-- Tier: core
-- Decision: P1–P3 signed off in the current priority order
-- Alternatives and why rejected: building the prompt directly and sending it — context is lost on follow-up
-- Cost: none
-- Evidence: skeleton test probes/0001, high rebuild coverage`;
-
-const INDEX = `| ID | Contract (one line) | implements | detail |
-|---|---|---|---|
-| C1 | modules own their context events and nothing else | P1 | T1 |
-| C2 | every cross-module call passes through conversation state | P2 | T2 |
-| C3 | context events expire per the lifecycle rule | P2 | T3 |`;
-
-const TECH = `# Technical Design (derived)
-
-` + ['T1 Module boundaries & responsibilities|C1', 'T2 Interface contracts|C2', 'T3 Data model|C3',
-  'T4 State machines|C2', 'T5 Error & edge policy|C2', 'T6 Stack choices & versions|C1',
-  'T7 Acceptance criteria|C2', 'T8 Non-functional constraints|C2', 'T9 Risks & open items|C1']
-  .map(s => { const [h, c] = s.split('|'); return `### ${h}\n- contracts: ${c}\n(content pending review)`; }).join('\n\n');
+const CONCEPT2 = CONCEPT.replace('Files are the single source of truth; every index is a rebuildable cache.',
+  'Files are the single source of truth; every index is a rebuildable cache (v2).');
 
 (async () => {
   let r = await rpc('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'smoke', version: '0' } });
-  ok(r.result.serverInfo.version === '1.2.2', 'initialize (server version 1.2.2)');
+  ok(r.result.serverInfo.version === '2.0.0', 'initialize (server version 2.0.0)');
   child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
   r = await rpc('tools/list', {});
-  ok(r.result.tools.length === 19, `tools/list exposes 19 tools (got ${r.result.tools.length})`);
+  ok(r.result.tools.length === 17, `tools/list exposes 17 tools (got ${r.result.tools.length})`);
 
-  // 1. activation: three files
+  // 1. activation: two files, draft phase
   r = await jcall('keel_init', { project: 'smoke' });
   ok(fs.existsSync(path.join(tmp, '.keel', 'DATUM.md')), 'keel_init creates DATUM.md');
-  ok(fs.existsSync(path.join(tmp, '.keel', 'TECHNICAL.md')), 'keel_init creates TECHNICAL.md');
   ok(fs.existsSync(path.join(tmp, '.keel', 'AMENDMENTS.md')), 'keel_init creates AMENDMENTS.md');
+  ok(!fs.existsSync(path.join(tmp, '.keel', 'TECHNICAL.md')), 'v2 creates no TECHNICAL.md');
+  ok(!fs.existsSync(path.join(tmp, '.keel', 'probes')), 'v2 creates no probes/');
 
-  // 2. core staging / consent evidence
-  r = await jcall('keel_write_section', { section: 'intent', content: INTENT, level: 'core', summary: 'initial requirements and boundary', rationale: 'requirement baseline confirmed item by item' });
-  ok(r.needsConsent === true, 'core write staged (needsConsent)');
+  // 2. draft phase: free writes, ai-managed
+  r = await jcall('keel_write_section', { section: 'intent', content: INTENT, level: 'core', summary: 'goal, scope, R1–R2', rationale: 'user confirmed requirements item by item' });
+  ok(r.written === true && r.bypassedConsent === true, 'draft: core write applies immediately (ai-managed)');
+  r = await jcall('keel_write_section', { section: 'concept', content: CONCEPT, level: 'core', summary: 'P1–P3 and concept model', rationale: 'derivation converged' });
+  ok(r.written === true && !r.activated, 'draft: concept written, readiness not yet complete (no glossary term)');
+  r = await jcall('keel_status', {});
+  ok(r.phase === 'draft' && r.ready.ready === false, 'status reports draft + not ready');
+
+  // 3. the completing write activates: switches default on, announced
+  r = await jcall('keel_glossary_register', { term: 'reverse index', definition: 'derived name-to-notes table, always rebuildable', load_bearing: ['P1'] });
+  ok(r.written === true && r.activated && r.activated.phase === 'authoritative'
+    && r.activated.consentMode === true && r.activated.stewardMode === true,
+    'completing write activates the DATUM (switches default ON, announced)');
+  r = await jcall('keel_status', {});
+  ok(r.phase === 'authoritative' && r.effective.consent === true && r.effective.steward === true, 'effective switches reported');
+
+  // 4. authoritative + consent on: staging
+  r = await jcall('keel_write_section', { section: 'concept', content: CONCEPT2, level: 'core', summary: 'P1 wording v2', rationale: 'clarify cache semantics' });
+  ok(r.needsConsent === true && r.proposalId, 'core write staged while consent is on');
   const p1 = r.proposalId;
-  r = await jcall('keel_digest', {});
-  ok(String(r).startsWith('[Keel] Authoritative design document: .keel/DATUM.md'), 'digest leads with the doc pointer');
-  ok(!String(r).includes('select-and-ask'), 'digest before confirm excludes new requirements');
   let err = '';
   try { await jcall('keel_confirm', { proposal_id: p1 }); } catch (e) { err = e.message; }
   ok(/consent_evidence/.test(err), 'confirm without consent_evidence rejected');
-  r = await jcall('keel_confirm', { proposal_id: p1, consent_evidence: 'confirmed, go with this' });
-  ok(r.written === true, 'confirm with evidence writes');
+  r = await jcall('keel_confirm', { proposal_id: p1, consent_evidence: '确认，就这么改' });
+  ok(r.written === true && r.level === 'core', 'confirm with evidence writes');
 
-  // 3. glossary escalation
-  r = await jcall('keel_glossary_register', { term: 'context event', definition: 'a unit of conversation context with a lifecycle', load_bearing: ['01 Concept model'], aliases: ['event'] });
-  ok(r.needsConsent === true && /core/.test(r.level), 'term load-bearing at 01 escalates to core staging');
-  await jcall('keel_confirm', { proposal_id: r.proposalId, consent_evidence: 'fine' });
+  // 5. anti-clobber guard
+  const cA = await jcall('keel_write_section', { section: 'concept', content: CONCEPT2.replace('(v2)', '(v3)'), level: 'core', summary: 'probe A', rationale: 'clobber probe A' });
+  const cB = await jcall('keel_write_section', { section: 'concept', content: CONCEPT2.replace('(v2)', '(v4)'), level: 'core', summary: 'probe B', rationale: 'clobber probe B' });
+  r = await jcall('keel_confirm', { proposal_id: cA.proposalId, consent_evidence: 'A first' });
+  ok(r.written === true, 'first staged proposal confirms');
+  err = '';
+  try { await jcall('keel_confirm', { proposal_id: cB.proposalId, consent_evidence: 'B second' }); } catch (e) { err = e.message; }
+  ok(/changed after this proposal was staged/.test(err), 'anti-clobber: second proposal refused at confirm');
+  r = await jcall('keel_reject', { proposal_id: cB.proposalId });
+  ok(r.rejected === cB.proposalId, 'rejected staging discarded');
+  r = await jcall('keel_status', {});
+  ok(r.pendingProposals.length === 0, 'no pending proposals left');
 
-  // 4. concept + ledger
-  r = await jcall('keel_write_section', { section: 'concept', content: CONCEPT, level: 'core', summary: 'P1–P3 and concept model v1', rationale: 'derivation converged, user signed off' });
-  await jcall('keel_confirm', { proposal_id: r.proposalId, consent_evidence: 'signed off' });
-  r = await jcall('keel_write_section', { section: 'ledger', content: LEDGER, level: 'peripheral', summary: 'L1 concept sign-off' });
-  ok(r.written === true, 'ledger peripheral direct-write');
+  // 6. batch: one consent, one row
+  const before = (await jcall('keel_status', {})).counts.amendments;
+  r = await jcall('keel_write_section', { sections: [
+    { section: 'intent', content: INTENT.replace('Cloud sync, multi-user editing.', 'Cloud sync, multi-user editing, plugins.') },
+    { section: 'concept', content: CONCEPT2.replace('(v3)', '(v3)') },
+  ], level: 'core', summary: 'scope + concept in one logical change', rationale: 'one batch, one consent' });
+  ok(r.needsConsent === true && r.sections.length === 2, 'batch staged as one unit');
+  r = await jcall('keel_confirm', { proposal_id: r.proposalId, consent_evidence: 'batch approved' });
+  r = await jcall('keel_status', {});
+  ok(r.counts.amendments === before + 1, `batch adds exactly one amendment row (got +${r.counts.amendments - before})`);
 
-  // 5. G1
-  r = await jcall('keel_gate', { gate: 'g1' });
-  ok(r.pass === false, 'G1 fails while the semantic item is unrecorded');
-  r = await jcall('keel_gate_record', { gate: 'g1', item: 'Skeleton test', pass: true, evidence: 'probes/0001 high rebuild coverage (subagent rebuild)' });
-  ok(r.pass === true, 'G1 passes after the semantic record');
-  r = await jcall('keel_phase', { to: 'tech' });
-  ok(r.to === 'tech', 'enters technical phase');
+  // 7. keel_config: consent off = ai self-management
+  r = await jcall('keel_config', { consent: false });
+  ok(r.effective.consent === false, 'keel_config turns consent off');
+  r = await jcall('keel_write_section', { section: 'concept', content: CONCEPT2.replace('(v3)', '(v5)'), level: 'core', summary: 'consent-off probe', rationale: 'ai-managed write' });
+  ok(r.written === true && r.bypassedConsent === true, 'consent OFF: core write applies immediately (ai-managed)');
+  r = await jcall('keel_config', { consent: true });
+  ok(r.effective.consent === true, 'keel_config turns consent back on (no re-validation required)');
 
-  // 6. Contract Index (core) then TECHNICAL (peripheral → join escalation)
-  r = await jcall('keel_write_section', { section: 'index', content: INDEX, level: 'core', summary: 'C1–C3 contract index', rationale: 'contracts derived from signed-off principles' });
-  ok(r.needsConsent === true, 'index write staged as core');
-  await jcall('keel_confirm', { proposal_id: r.proposalId, consent_evidence: 'index approved' });
-  r = await jcall('keel_write_section', { section: 'technical', content: TECH, level: 'peripheral', summary: 'T1–T9 elaboration' });
-  ok(r.needsConsent === true && r.level === 'core-escalated', 'TECHNICAL peripheral declaration auto-escalated via contracts join');
-  ok((r.closure || []).includes('P1') && (r.closure || []).includes('P2'), `join closure hits core: ${(r.closure || []).join(',')}`);
-  await jcall('keel_confirm', { proposal_id: r.proposalId, consent_evidence: 'confirmed' });
-
-  // 7. G2 join integrity
-  r = await jcall('keel_gate', { gate: 'g2' });
-  ok(r.pass === false, 'G2 fails while user-review item is unrecorded');
-  ok(r.checks.find(c => c.item.includes('contracts')).pass === true, 'G2 contracts join check passes');
-  await jcall('keel_gate_record', { gate: 'g2', item: 'User reviewed', pass: true, evidence: 'user confirmed index + 12 decision points' });
-  r = await jcall('keel_phase', { to: 'handoff' });
-  const ho = fs.readFileSync(r.snapshot, 'utf8');
-  ok(ho.includes('# DATUM') && ho.includes('# Technical Design (derived)'), 'handoff bundles DATUM + TECHNICAL');
-
-  // 8. ripple join: T3 → C3 → P2
-  r = await jcall('keel_ripple', { targets: ['T3'] });
-  ok(r.affectedCore.includes('P2'), 'ripple: T3 → C3 → P2');
-
-  // 9. protected references: add / verify / tamper / remove
-  fs.mkdirSync(path.join(tmp, 'docs'));
-  fs.writeFileSync(path.join(tmp, 'docs', 'notes.md'), 'renders P2 for the API team\n');
-  r = await jcall('keel_ref_add', { path: 'docs/notes.md', carries: ['P2'] });
-  ok(r.needsConsent === true, 'ref add staged as core (protection boundary)');
-  await jcall('keel_confirm', { proposal_id: r.proposalId, consent_evidence: 'protect it' });
+  // 8. protected references lifecycle
+  const docRel = 'docs/arch-note.md';
+  fs.mkdirSync(path.join(tmp, 'docs'), { recursive: true });
+  fs.writeFileSync(path.join(tmp, docRel), 'architecture note v1\n');
+  r = await jcall('keel_ref_add', { path: docRel, carries: ['P1'] });
+  ok(r.needsConsent === true, 'ref admission staged (extends protection boundary)');
+  r = await jcall('keel_confirm', { proposal_id: r.proposalId, consent_evidence: 'protect it' });
   r = await jcall('keel_refs_verify', {});
-  ok(r.mismatches === 0 && r.refs[0].ok === true, 'ref verify passes at admitted hash');
-  fs.appendFileSync(path.join(tmp, 'docs', 'notes.md'), 'extra line added out of protocol\n');
+  ok(r.mismatches === 0 && r.refs.length === 1, 'admitted ref verifies clean');
+  fs.writeFileSync(path.join(tmp, docRel), 'architecture note v1 — tampered\n');
   r = await jcall('keel_refs_verify', {});
-  ok(r.mismatches === 1 && r.refs[0].ok === false, 'tamper detected after out-of-protocol edit');
+  ok(r.mismatches === 1, 'tamper detected (report-only)');
+  fs.writeFileSync(path.join(tmp, docRel), 'architecture note v1\n');
+  r = await jcall('keel_ripple', { targets: ['P1'] });
+  ok(r.affectedCore.includes('P1') && r.staleRefs.some(s => s.path === docRel), 'ripple: P1 → affected core + stale ref');
+
+  // 9. staleRefs surface on the amending confirm
+  r = await jcall('keel_write_section', { section: 'concept', content: CONCEPT2.replace('(v5)', '(v6)'), level: 'core', summary: 'P1 line touched again', rationale: 'stale probe' });
+  r = await jcall('keel_confirm', { proposal_id: r.proposalId, consent_evidence: 'stale probe confirmed' });
+  ok(r.staleRefs && r.staleRefs.some(s => s.path === docRel), 'confirm returns staleRefs for the protected doc');
+
+  // 10. ref removal
   r = await jcall('keel_ref_remove', { ref: 'R1' });
-  ok(r.needsConsent === true, 'ref remove staged as core');
-  await jcall('keel_confirm', { proposal_id: r.proposalId, consent_evidence: 'unprotect' });
-  r = await jcall('keel_status', {});
-  ok(r.counts.protectedRefs === 0 && r.counts.contracts === 3, 'status counts refs=0, contracts=3');
+  ok(r.needsConsent === true, 'ref removal staged');
+  await jcall('keel_confirm', { proposal_id: r.proposalId, consent_evidence: 'retire it' });
+  r = await jcall('keel_refs_verify', {});
+  ok(r.refs.length === 0, 'ref retired from scope (file untouched)');
 
-  // 10. amendment core change reports stale refs
-  fs.writeFileSync(path.join(tmp, 'docs', 'notes2.md'), 'another satellite\n');
-  r = await jcall('keel_ref_add', { path: 'docs/notes2.md', carries: ['P2'] });
-  const pRef = r.proposalId;
-  await jcall('keel_confirm', { proposal_id: pRef, consent_evidence: 'ok' });
-  r = await jcall('keel_write_section', { section: 'concept', content: CONCEPT.replace('including event expiry rules', 'including event expiry rules, revised'), level: 'core', summary: 'P2 refined', rationale: 'expiry rule wording clarified with the user' });
-  const pP2 = r.proposalId;
-  r = await jcall('keel_confirm', { proposal_id: pP2, consent_evidence: 'agreed' });
-  ok(Array.isArray(r.staleRefs) && r.staleRefs.some(s => s.ref === 'R1'), 'core amendment reports stale protected refs');
+  // 11. exemption
+  r = await jcall('keel_exempt', { summary: 'importer bypasses the rename flow', reason: 'explicitly waved through for the migration script' });
+  ok(r.amendment > 0, 'exemption recorded');
 
-  // 11. exemption, health, compaction
-  r = await jcall('keel_exempt', { summary: 'temporarily bypass contract C3 for an experiment', reason: 'one-off validation, no design impact' });
-  ok(!!r.amendment, 'exemption recorded');
+  // 12. compaction: lifetime survives
+  const lifeBefore = (await jcall('keel_health', {})).coreAmendmentsLifetime;
+  r = await jcall('keel_compact', { entries: [{ position: '01 Concept', summary: 'P1 wording evolved v2→v6; essentials unchanged' }] });
+  ok(fs.existsSync(path.join(tmp, '.keel', 'archive', path.basename(r.archived))), 'raw log archived verbatim');
   r = await jcall('keel_health', {});
-  ok(/reference/i.test(r.oscillation.note), 'oscillation labeled as reference metric');
-  r = await jcall('keel_compact', { entries: [{ position: '00 Intent', summary: 'requirement baseline formed once' }, { position: 'TECHNICAL.md', summary: 'T1–T9 drafted in one pass' }] });
-  ok(fs.existsSync(r.archived), 'compaction archives the raw AMENDMENTS.md');
-  r = await jcall('keel_status', {});
-  ok(r.counts.amendments === 3 && r.phase === 'handoff', `after compaction the log holds 3 rows (got ${r.counts.amendments})`);
+  ok(r.coreAmendmentsLifetime === lifeBefore && r.coreAmendments < r.coreAmendmentsLifetime,
+    'compaction resets epoch but never the lifetime counter');
 
-  // 12. orphan-block cleanup
+  // 13. orphan cleanup
   const datumFile = path.join(tmp, '.keel', 'DATUM.md');
-  const before = fs.readFileSync(datumFile, 'utf8');
-  fs.writeFileSync(datumFile, before + '\n## Orphan junk block\nstale copy of an early misplacement\n');
+  fs.writeFileSync(datumFile, fs.readFileSync(datumFile, 'utf8') + '\n## Orphan junk block\nstale copy of an early misplacement\n');
   r = await jcall('keel_clean', {});
   ok(r.removed === 1 && /Orphan junk/.test(r.titles.join(',')), 'keel_clean removes orphan ## blocks');
   r = await jcall('keel_read', { section: 'intent' });
-  ok(String(r).includes('select-and-ask'), 'keyed sections intact after clean');
-  r = await jcall('keel_status', {});
-  ok(r.counts.amendments === 4, `maintenance row appended (got ${r.counts.amendments})`);
+  ok(String(r).includes('Requirement R1'), 'keyed sections intact after clean');
 
-  // 13. multi-section batch: one consent, one row
-  const gl2 = String(await jcall('keel_read', { section: 'glossary' })) + '\n| batch probe | one consent one row | 01 Concept model | | active |';
-  const lg2 = LEDGER + '\n### L2 Batch probe [decision]\n- Tier: peripheral\n- Decision: written via multi-section batch\n';
-  const cntBefore = (await jcall('keel_status', {})).counts.amendments;
-  r = await jcall('keel_write_section', { sections: [{ section: 'ledger', content: lg2 }, { section: 'glossary', content: gl2 }], level: 'peripheral', summary: 'batch: ledger L2 + glossary probe' });
-  ok(r.needsConsent === true && r.level === 'core-escalated' && r.sections.length === 2, 'batch escalates as one unit (core-loaded glossary row)');
-  await jcall('keel_confirm', { proposal_id: r.proposalId, consent_evidence: 'batch approved' });
-  r = await jcall('keel_status', {});
-  ok(r.counts.amendments === cntBefore + 1, `batch adds exactly one amendment row (got +${r.counts.amendments - cntBefore})`);
+  // 14. digest: pointer + mode line
+  r = await jcall('keel_digest', {});
+  ok(String(r).startsWith('[Keel] Authoritative design notebook: .keel/DATUM.md'), 'digest leads with the doc pointer');
+  ok(/phase=authoritative · consent=on · steward=on/.test(String(r)), 'digest mode line shows phase + switches');
 
-  // 14. post-handoff mechanical refresh
-  const CONCEPT2 = CONCEPT.replace('the conversation is the single authoritative source of context', 'the conversation is the single authoritative source of context (v2)');
-  r = await jcall('keel_write_section', { section: 'concept', content: CONCEPT2, level: 'core', summary: 'P2 wording v2', rationale: 'verify post-handoff rolling refresh' });
-  await jcall('keel_confirm', { proposal_id: r.proposalId, consent_evidence: 'refresh probe confirmed' });
-  const ho2 = fs.readFileSync(path.join(tmp, '.keel', 'handoff.md'), 'utf8');
-  ok(ho2.includes('(v2)') && /Snapshot @ amendment #\d+/.test(ho2), 'handoff rolls forward with amendment-annotated header');
-  ok(fs.readdirSync(path.join(tmp, '.keel', 'archive')).some(f => /^handoff-/.test(f)), 'replaced handoff frozen to archive/');
-
-  // 15. dual health metrics
-  r = await jcall('keel_health', {});
-  ok(r.coreAmendmentsLifetime > 0 && /since the last compaction/.test(r.yellowFlagBasis), 'dual health metrics (lifetime + labeled epoch basis)');
-
-  // 16. hook output contract: hosts parse hook stdout as strict JSON and
-  // discard plain text, so the digest must ride in additionalContext or the
-  // hook must stay silent.
+  // 15. hook output contract
   const hookDir = path.join(__dirname, '..', 'hooks');
   const parseHookOut = (s) => { const t = (s.stdout || '').toString().trim(); return t ? JSON.parse(t) : null; };
   let hs = spawnSync(process.execPath, [path.join(hookDir, 'session-start.js')], { cwd: tmp, encoding: 'utf8' });
   let hj = parseHookOut(hs);
   ok(hs.status === 0 && hj && hj.hookSpecificOutput && hj.hookSpecificOutput.hookEventName === 'SessionStart'
-    && String(hj.hookSpecificOutput.additionalContext).startsWith('[Keel] Authoritative design document'),
+    && String(hj.hookSpecificOutput.additionalContext).startsWith('[Keel] Authoritative design notebook'),
     'session-start emits strict JSON additionalContext (SessionStart)');
   const noDatum = fs.mkdtempSync(path.join(os.tmpdir(), 'keel-nodatum-'));
   hs = spawnSync(process.execPath, [path.join(hookDir, 'session-start.js')], { cwd: noDatum, encoding: 'utf8' });
-  ok(hs.status === 0 && (hs.stdout || '').toString().trim() === '', 'session-start is silent without .keel');
+  ok(hs.status === 0 && (hs.stdout || '').toString().trim() === '', 'session-start silent without .keel');
   let hp = spawnSync(process.execPath, [path.join(hookDir, 'post-confirm.js')], {
     cwd: tmp, encoding: 'utf8',
     input: JSON.stringify({ tool_name: 'mcp__keel__keel_confirm', tool_response: { ok: true } }),
   });
-  let pj = parseHookOut(hp);
-  ok(hp.status === 0 && pj && pj.hookSpecificOutput && pj.hookSpecificOutput.hookEventName === 'PostToolUse'
-    && typeof pj.hookSpecificOutput.additionalContext === 'string',
-    'post-confirm emits strict JSON additionalContext (PostToolUse)');
+  const pj = parseHookOut(hp);
+  ok(hp.status === 0 && pj && pj.hookSpecificOutput.hookEventName === 'PostToolUse'
+    && typeof pj.hookSpecificOutput.additionalContext === 'string', 'post-confirm emits strict JSON (PostToolUse)');
   hp = spawnSync(process.execPath, [path.join(hookDir, 'post-confirm.js')], {
-    cwd: tmp, encoding: 'utf8',
-    input: JSON.stringify({ tool_response: { isError: true } }),
+    cwd: tmp, encoding: 'utf8', input: JSON.stringify({ tool_response: { isError: true } }),
   });
   ok(hp.status === 0 && (hp.stdout || '').toString().trim() === '', 'post-confirm silent on failed tool call');
+
+  // 16. notebook mode (factory direct): switches stay off through activation
+  const { makeKeel } = require(path.join(__dirname, '..', 'mcp', 'server.js'));
+  const tmp2 = fs.mkdtempSync(path.join(os.tmpdir(), 'keel-nb-'));
+  const k2 = makeKeel(tmp2);
+  k2.init('nb', true);
+  k2.propose({ section: 'intent', content: INTENT, level: 'core', summary: 'nb intent', rationale: 'notebook mode probe' });
+  k2.propose({ section: 'concept', content: CONCEPT, level: 'core', summary: 'nb concept', rationale: 'notebook mode probe' });
+  const rg = k2.glossaryRegister({ term: 'reverse index', definition: 'derived table', load_bearing: ['P1'] });
+  ok(rg.written === true && rg.activated && rg.activated.consentMode === false && rg.activated.stewardMode === false,
+    'notebook init: activation keeps both switches OFF');
+  const rc = k2.propose({ section: 'concept', content: CONCEPT2, level: 'core', summary: 'nb still free', rationale: 'notebook mode stays free' });
+  ok(rc.written === true && rc.bypassedConsent === true, 'notebook mode: core writes stay ai-managed after activation');
 
   console.log(failed === 0 ? '\nSMOKE PASS' : `\nSMOKE FAIL (${failed})`);
   child.kill();

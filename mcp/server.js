@@ -1,69 +1,78 @@
 #!/usr/bin/env node
 /*
- * Keel MCP server v1.1.0 — zero-dependency, stdio JSON-RPC (MCP).
- * Engineering axiom: semantics belong to the AI; determinism belongs to this file.
- * Mechanical duties (never delegated to the model): file/folder creation,
- * DATUM/TECHNICAL/AMENDMENTS writes with schema validation, append-only
- * amendment log, digest generation as verbatim slicing (never AI paraphrase),
- * traceability closure over index/technical/glossary links, protected-reference
- * hashing and verification, gate checklist verification, consent tiering with
- * staging for core changes, compaction with archival, health and oscillation
- * reference statistics.
+ * Keel MCP server v2.0.0 — zero-dependency, stdio JSON-RPC (MCP).
  *
- * File layout (protection levels):
- *   DATUM.md     guarded core (L1) — 00 Intent / G Glossary / 01 Concept /
- *                02 Trade-off Ledger / 03 Contract Index (thin) / R Protected References
- *   TECHNICAL.md derived elaboration (L0) — T1..T9, joined to the index via contracts:
- *   AMENDMENTS.md history — append-only, compacted into archive/
+ * v2 doctrine: Keel is the AI's authoritative NOTEBOOK — it records the
+ * requirements (00), the concept model with weighted principles (01),
+ * load-bearing terms (G) and hash-pinned protected documents (R), and keeps
+ * them from silently degrading. It no longer directs any workflow: the AI
+ * thinks freely, and glances at the notebook after planning, before
+ * implementing.
+ *
+ * Modes (state.json):
+ *   phase        'draft' (incomplete — all writes apply immediately, logged
+ *                as ai-managed) → 'authoritative' (mechanical readiness
+ *                check passed; flips automatically on the completing write)
+ *   consentMode  authoritative + on  → core writes staged until keel_confirm
+ *                                     with the user's consenting words
+ *                authoritative + off → AI self-manages (still logged)
+ *   stewardMode  informational for the agent: on = structured post-plan
+ *                check; off = the glance habit alone. Never enforced here.
+ *
+ * Mechanical duties (never delegated to the model): file creation, DATUM /
+ * AMENDMENTS writes with schema validation, append-only amendment log,
+ * digest generation as verbatim slicing, traceability closure over glossary
+ * and protected-reference links, reference hashing and verification,
+ * consent tiering with staging (when enabled), readiness computation,
+ * compaction with archival, health and oscillation reference statistics.
  */
 'use strict';
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const VERSION = '1.2.2';
+const VERSION = '2.0.0';
 
 const SECTIONS = [
   { id: '00', key: 'intent',   title: '00 Intent' },
   { id: 'G',  key: 'glossary', title: 'G Glossary' },
   { id: '01', key: 'concept',  title: '01 Concept' },
-  { id: '02', key: 'ledger',   title: '02 Trade-off Ledger' },
-  { id: '03', key: 'index',    title: '03 Contract Index' },
   { id: 'R',  key: 'refs',     title: 'R Protected References' },
 ];
 const CORE_REF = /^(P\d|01|00)/; // a traceability reference matching this touches core
 const COMPACT_MIN = 5;           // refuse compaction when the log is shorter than this
-const G2_KEYS = ['Module boundaries', 'Interface contracts', 'Data model', 'State machines',
-  'Error', 'Stack', 'Acceptance', 'Non-functional', 'Risks'];
 
 function makeKeel(root) {
   const dir = path.join(root, '.keel');
   const datumPath = path.join(dir, 'DATUM.md');
-  const techPath = path.join(dir, 'TECHNICAL.md');
   const amendmentsPath = path.join(dir, 'AMENDMENTS.md');
   const statePath = path.join(dir, 'state.json');
+  const legacyTechPath = path.join(dir, 'TECHNICAL.md'); // v1 projects only
 
   const exists = () => fs.existsSync(datumPath);
   function requireInit() { if (!exists()) throw new Error('No .keel/DATUM.md in the current directory. Run keel_init first.'); }
   function readState() {
-    try { return JSON.parse(fs.readFileSync(statePath, 'utf8')); }
-    catch (_) { return { phase: 'concept', proposals: {}, seq: { proposal: 0, amendment: 0 }, gates: {} }; }
+    let s = {};
+    try { s = JSON.parse(fs.readFileSync(statePath, 'utf8')); } catch (_) { /* fresh or corrupt: conservative defaults */ }
+    s = Object.assign({ phase: 'draft', consentMode: true, stewardMode: true, proposals: {}, seq: { proposal: 0, amendment: 0 }, coreCount: 0 }, s);
+    if (s.phase === 'concept') s.phase = 'draft';          // v1 migration
+    if (s.phase === 'tech' || s.phase === 'handoff') s.phase = 'authoritative';
+    return s;
   }
   function writeState(s) { fs.writeFileSync(statePath, JSON.stringify(s, null, 2)); }
 
-  function init(project, force) {
-    if (exists() && !force) throw new Error('.keel already exists; pass force=true to rebuild (this discards the current DATUM).');
-    fs.mkdirSync(path.join(dir, 'probes'), { recursive: true });
+  function init(project, notebook) {
+    if (exists()) throw new Error('.keel already exists; to rebuild from scratch, delete the directory first (this discards the current DATUM).');
     fs.mkdirSync(path.join(dir, 'archive'), { recursive: true });
     const tplDir = path.join(__dirname, '..', 'templates');
     const subst = t => t.split(/\r?\n/).map(l => l.replace('<project>', project || 'Unnamed project')).join('\n');
     fs.writeFileSync(datumPath, subst(fs.readFileSync(path.join(tplDir, 'DATUM.md'), 'utf8')));
-    fs.writeFileSync(techPath, fs.readFileSync(path.join(tplDir, 'TECHNICAL.md'), 'utf8'));
     fs.writeFileSync(amendmentsPath, fs.readFileSync(path.join(tplDir, 'AMENDMENTS.md'), 'utf8'));
-    writeState({ phase: 'concept', proposals: {}, seq: { proposal: 0, amendment: 0 }, gates: {} });
+    writeState({ phase: 'draft', consentMode: !notebook, stewardMode: !notebook, proposals: {}, seq: { proposal: 0, amendment: 0 }, coreCount: 0 });
     return {
-      created: dir, files: ['DATUM.md', 'TECHNICAL.md', 'AMENDMENTS.md'], phase: 'concept',
-      next: 'Extract numbered requirements R*, confirm them with the user one by one, then write section 00 at core level.',
+      created: dir, files: ['DATUM.md', 'AMENDMENTS.md'], phase: 'draft',
+      mode: notebook ? 'notebook (consent and steward stay off)' : 'guarded (switches default on at activation)',
+      next: 'Record the goal, out-of-scope and numbered requirements R* in 00, principles in 01, then register the first load-bearing term. While the DATUM is incomplete you write freely.',
     };
   }
 
@@ -98,19 +107,6 @@ function makeKeel(root) {
     if (idx < 0) blocks.push({ title: SECTIONS.find(s => s.key === key).title, lines: body.split(/\r?\n/) });
     else blocks[idx].lines = body.split(/\r?\n/);
     fs.writeFileSync(datumPath, serialize(blocks));
-  }
-
-  // ---------- TECHNICAL (derived) ----------
-  function getTechnical() { return fs.readFileSync(techPath, 'utf8'); }
-  function setTechnical(content) { fs.writeFileSync(techPath, String(content).replace(/\s+$/, '') + '\n'); }
-  function parseTechItems() {
-    return getTechnical().split(/^###\s+/m).slice(1).map(p => {
-      const ls = p.split(/\r?\n/);
-      const head = ls[0].trim();
-      const m = p.match(/contracts:\s*([^\n]+)/i);
-      const contracts = m ? m[1].split(/[,，;；]\s*/).map(s => s.trim()).filter(Boolean) : [];
-      return { head, contracts, body: p };
-    });
   }
 
   // ---------- Amendment log (append-only, server-owned) ----------
@@ -148,11 +144,6 @@ function makeKeel(root) {
       .map(c => ({ term: c[0] || '', def: c[1] || '', load: c[2] || '', aliases: c[3] || '', status: c[4] || 'active' }))
       .filter(r => r.term && r.status !== 'archived');
   }
-  function parseIndexRows() {
-    return tableRows(getSection('index'), 'ID')
-      .map(c => ({ id: c[0] || '', text: c[1] || '', impl: (c[2] || '').split(/[,，;；]\s*/).map(s => s.trim()).filter(Boolean), detail: c[3] || '' }))
-      .filter(r => r.id && !/(TBD)/.test(r.id));
-  }
   function parseRefs() {
     return tableRows(getSection('refs'), 'ref')
       .map(c => ({ ref: c[0] || '', path: c[1] || '', carries: (c[2] || '').split(/[,，;；]\s*/).map(s => s.trim()).filter(Boolean), sha: c[3] || '', admitted: c[4] || '', status: c[5] || 'active' }))
@@ -160,27 +151,10 @@ function makeKeel(root) {
   }
 
   // ---------- Traceability closure (mechanical ripple computation) ----------
-  function indexImplementsOf(cid) {
-    const row = parseIndexRows().find(r => r.id === cid);
-    return row ? row.impl : null; // null = unindexed contract id
-  }
   function scanRefs(section, content) {
     // Mechanically extract core-touching traceability references from the content about to be written.
     const refs = new Set();
-    if (section === 'index') {
-      for (const row of tableRows(String(content), 'ID')) {
-        const impl = (row[2] || '').split(/[,，;；]\s*/).map(s => s.trim());
-        for (const r of impl) if (CORE_REF.test(r)) refs.add(r);
-      }
-    } else if (section === 'technical') {
-      for (const m of content.matchAll(/contracts:\s*([^\n]+)/gi)) {
-        for (const cid of m[1].split(/[,，;；]\s*/).map(s => s.trim()).filter(Boolean)) {
-          const impl = indexImplementsOf(cid);
-          if (impl === null) refs.add(`${cid}(unindexed)`);
-          else for (const r of impl) if (CORE_REF.test(r)) refs.add(r);
-        }
-      }
-    } else if (section === 'glossary') {
+    if (section === 'glossary') {
       for (const l of content.split(/\r?\n/)) {
         if (!l.startsWith('|')) continue;
         const c = l.split('|').slice(1, -1).map(s => s.trim());
@@ -202,22 +176,12 @@ function makeKeel(root) {
   }
   function ripple(targets) {
     const affected = new Set(); const detail = [];
-    const items = parseTechItems();
-    const index = parseIndexRows();
     const terms = parseGlossaryRows();
     for (const t of targets || []) {
       const hit = { target: t, refs: [] };
-      for (const it of items) {
-        if (it.head.includes(t)) {
-          for (const cid of it.contracts) {
-            const impl = indexImplementsOf(cid);
-            if (impl === null) hit.refs.push(`${cid}(unindexed)`);
-            else hit.refs.push(...impl.filter(r => CORE_REF.test(r)));
-          }
-        }
-      }
-      for (const row of index) if (row.id === t || row.detail === t) hit.refs.push(...row.impl.filter(r => CORE_REF.test(r)));
-      for (const g of terms) if (g.term === t) hit.refs.push(...g.load.split(/[,，;；]/).map(s => s.trim()).filter(r => CORE_REF.test(r)));
+      if (CORE_REF.test(t)) hit.refs.push(t);
+      const g = terms.find(x => x.term === t);
+      if (g) hit.refs.push(...g.load.split(/[,，;；]/).map(s => s.trim()).filter(r => CORE_REF.test(r)));
       hit.refs = [...new Set(hit.refs)];
       hit.refs.forEach(r => affected.add(r));
       detail.push(hit);
@@ -226,25 +190,45 @@ function makeKeel(root) {
     const stale = staleRefsOf(affectedCore);
     return {
       targets, affectedCore, staleRefs: stale,
-      note: 'Core-touching changes must go through the core consent flow; listed staleRefs are protected documents now suspected outdated.',
+      note: 'Core-touching changes go through the consent flow when it is active; listed staleRefs are protected documents now suspected outdated.',
       detail,
+    };
+  }
+
+  // ---------- Readiness (mechanical; drives draft → authoritative) ----------
+  function filled(line) { return line && !line.includes('(TBD)'); }
+  function readyCheck() {
+    const intent = getSection('intent') || '';
+    const checks = [];
+    checks.push({ item: '00 Goal filled', pass: intent.split(/\r?\n/).some(l => /^-\s*Goal \(one sentence\):/.test(l) && filled(l)) });
+    checks.push({ item: '00 Out-of-scope filled', pass: intent.split(/\r?\n/).some(l => /^-\s*Out of scope:/.test(l) && filled(l)) });
+    const reqs = intent.split(/\r?\n/).filter(l => /^- Requirement R\d+:/.test(l) && filled(l));
+    checks.push({ item: '00 ≥1 confirmed requirement', pass: reqs.length >= 1 });
+    const ps = (getSection('concept') || '').split(/\r?\n/).filter(l => /^- P\d+\s*[:：]/.test(l) && filled(l));
+    checks.push({ item: '01 design principles 3–5', pass: ps.length >= 3 && ps.length <= 5 });
+    checks.push({ item: 'G ≥1 active glossary term', pass: parseGlossaryRows().length >= 1 });
+    return { ready: checks.every(c => c.pass), checks };
+  }
+  function maybeActivate() {
+    const st = readState();
+    if (st.phase !== 'draft' || !readyCheck().ready) return null;
+    st.phase = 'authoritative'; writeState(st);
+    return {
+      phase: 'authoritative', consentMode: st.consentMode, stewardMode: st.stewardMode,
+      note: 'DATUM mechanically complete — now authoritative. Announce to the user: consent mechanism and STEWARD are now ' +
+        (st.consentMode || st.stewardMode ? 'active per the switches' : 'switched off (notebook mode)') +
+        '. Flip anytime with keel_config.',
     };
   }
 
   // ---------- Writes and consent tiering ----------
   function applyWrite(prop, consent) {
-    for (const e of prop.sections) {
-      if (e.section === 'technical') setTechnical(e.content);
-      else setSection(e.section, e.content);
-    }
+    for (const e of prop.sections) setSection(e.section, e.content);
     prop.amendmentNo = appendAmendment({
       level: prop.effLevel, position: prop.position,
       summary: prop.summary, overturns: prop.overturns, consent,
     });
-    // Post-handoff design changes refresh the bundle mechanically (frozen copies
-    // are archived); staleness of the downstream deliverable must not depend on
-    // agent diligence.
-    if (readState().phase === 'handoff') writeHandoff();
+    return maybeActivate();
   }
   function propose(args) {
     requireInit();
@@ -253,14 +237,13 @@ function makeKeel(root) {
     if (!list.length) throw new Error('Provide either section+content or a non-empty sections:[{section, content}] batch.');
     const seen = new Set();
     for (const e of list) {
-      const isTech = e.section === 'technical';
       const meta = SECTIONS.find(s => s.key === e.section);
-      if (!meta && !isTech) throw new Error(`Unknown section: ${e.section} (valid: ${SECTIONS.map(s => s.key).join(', ')}, technical)`);
+      if (!meta) throw new Error(`Unknown section: ${e.section} (valid: ${SECTIONS.map(s => s.key).join(', ')})`);
       if (e.section === 'amendments') throw new Error('The amendment log is server-owned; direct writes are forbidden.');
       if (seen.has(e.section)) throw new Error(`Duplicate section in batch: ${e.section}`);
       seen.add(e.section);
       if (typeof e.content !== 'string' || !e.content.trim()) throw new Error(`content for "${e.section}" must be a non-empty string.`);
-      if (!isTech && /^##\s/m.test(e.content)) {
+      if (/^##\s/m.test(e.content)) {
         throw new Error(`Section content for "${e.section}" must not contain "## " headings — "##" is reserved for section boundaries and would split the section during parsing. Use "###" or lower inside sections.`);
       }
     }
@@ -278,8 +261,8 @@ function makeKeel(root) {
 
     const entries = list.map(e => ({
       section: e.section, content: e.content,
-      position: e.position || (e.section === 'technical' ? 'TECHNICAL.md' : SECTIONS.find(s => s.key === e.section).title),
-      baseContent: e.section === 'technical' ? getTechnical() : getSection(e.section),
+      position: e.position || SECTIONS.find(s => s.key === e.section).title,
+      baseContent: getSection(e.section),
     }));
     const prop = {
       id: null, sections: entries, level, effLevel, summary, rationale, overturns,
@@ -294,14 +277,23 @@ function makeKeel(root) {
       if (e.section === 'intent') for (const m of e.content.matchAll(/^- Requirement (R\d+):/gm)) touched.add(m[1]);
     }
     prop.touchedCore = [...touched];
-    if (effLevel === 'peripheral') {
-      applyWrite(prop, 'batch-notified');
-      return {
-        written: true, level: 'peripheral', amendment: prop.amendmentNo, sectionsApplied: entries.length,
-        note: 'Peripheral tier: mechanically logged (one row for the whole batch). Batch-notify the user at session end / a gate / keel_status.',
-      };
-    }
+
     const st = readState();
+    const consentActive = st.phase === 'authoritative' && st.consentMode;
+    if (effLevel === 'peripheral' || !consentActive) {
+      const act = applyWrite(prop, effLevel === 'peripheral' ? 'batch-notified' : 'ai-managed');
+      const r = {
+        written: true, level: effLevel, amendment: prop.amendmentNo, sectionsApplied: entries.length,
+        note: effLevel === 'peripheral'
+          ? 'Peripheral tier: mechanically logged (one row for the whole batch). Batch-notify the user at session end or via keel_status.'
+          : (st.phase === 'draft'
+            ? 'Draft phase: the consent mechanism is not active — applied immediately and logged (ai-managed).'
+            : 'consent OFF: you self-manage this write — applied immediately and logged (ai-managed).'),
+      };
+      if (effLevel !== 'peripheral') r.bypassedConsent = true;
+      if (act) r.activated = act;
+      return r;
+    }
     st.seq.proposal += 1;
     prop.id = 'PR' + st.seq.proposal;
     st.proposals[prop.id] = prop; writeState(st);
@@ -319,9 +311,8 @@ function makeKeel(root) {
     if (!prop) throw new Error(`Proposal not found or already handled: ${proposal_id} (keel_status lists pending proposals).`);
     const ev = (consent_evidence || '').trim();
     if (ev.length < 2) throw new Error('consent_evidence is required: the user\'s consenting words from the conversation (audit trail).');
-    const current = (e) => (e.section === 'technical' ? getTechnical() : getSection(e.section));
     for (const e of prop.sections) {
-      if (current(e) !== e.baseContent) {
+      if (getSection(e.section) !== e.baseContent) {
         throw new Error(`Section "${e.section}" changed after this proposal was staged (another amendment landed first). Call keel_reject on ${proposal_id} and re-propose against the current content — otherwise the earlier change would be silently clobbered.`);
       }
     }
@@ -423,95 +414,6 @@ function makeKeel(root) {
     return { refs: out, mismatches: out.filter(o => !o.ok).length, note: 'Tamper-evidence only: mismatches are reported, never blocked. Regenerate or re-admit after intentional changes.' };
   }
 
-  // ---------- Gates ----------
-  function filled(line) { return line && !line.includes('(TBD)'); }
-  function gate(g) {
-    requireInit();
-    const checks = [];
-    if (g === 'g1') {
-      const intent = getSection('intent') || '';
-      checks.push({ item: '00 Goal filled', pass: intent.split(/\r?\n/).some(l => /^-\s*Goal \(one sentence\):/.test(l) && filled(l)) });
-      checks.push({ item: '00 Out-of-scope filled', pass: intent.split(/\r?\n/).some(l => /^-\s*Out of scope:/.test(l) && filled(l)) });
-      const reqs = intent.split(/\r?\n/).filter(l => /^- Requirement R\d+:/.test(l) && filled(l));
-      checks.push({ item: '00 ≥1 confirmed requirement', pass: reqs.length >= 1 });
-      const ps = (getSection('concept') || '').split(/\r?\n/).filter(l => /^- P\d+\s*[:：]/.test(l) && filled(l));
-      checks.push({ item: '01 design principles 3–5', pass: ps.length >= 3 && ps.length <= 5 });
-      checks.push({ item: '02 ≥1 ledger entry (incl. sign-off)', pass: /### L\d+/.test(getSection('ledger') || '') });
-      checks.push({ item: 'G ≥1 active glossary term', pass: parseGlossaryRows().length >= 1 });
-      checks.push({ item: 'Skeleton test (semantic item — AI runs it, then records)', pass: false });
-    } else if (g === 'g2') {
-      const items = parseTechItems();
-      const index = parseIndexRows();
-      for (const k of G2_KEYS) {
-        const it = items.find(i => i.head.includes(k));
-        checks.push({ item: `TECHNICAL ${k} (filled, with contracts)`, pass: !!it && !it.body.includes('(TBD)') && it.contracts.length > 0 && !it.contracts.includes('(TBD)') });
-      }
-      checks.push({ item: 'Index non-empty', pass: index.length >= 1 });
-      const indexOk = index.length && index.every(r => r.impl.length && r.impl.some(i => CORE_REF.test(i)) && r.detail.trim().length > 0);
-      checks.push({ item: 'Every index row has implements + detail link', pass: !!indexOk });
-      const indexed = new Set(index.map(r => r.id));
-      const joinOk = items.every(it => it.contracts.every(c => indexed.has(c)));
-      checks.push({ item: 'Every contracts: link resolves to the index', pass: joinOk });
-      checks.push({ item: 'User reviewed the index + TECHNICAL summary and decision points (semantic item — AI records)', pass: false });
-    } else throw new Error('gate supports only g1 | g2.');
-
-    const pass = checks.every(c => c.pass);
-    const st = readState();
-    st.gates[g] = { pass, at: new Date().toISOString(), checks };
-    writeState(st);
-    return { gate: g, pass, checks, note: 'Semantic items must be recorded via keel_gate_record before the gate passes as a whole.' };
-  }
-  function gateRecord(args) {
-    requireInit();
-    const { gate: g, item, pass, evidence } = args;
-    if (!evidence || evidence.length < 4) throw new Error('Semantic records must include evidence (e.g., skeleton-test coverage, probe file path).');
-    const st = readState();
-    if (!st.gates[g]) throw new Error(`gate ${g} has not been run yet; call keel_gate first.`);
-    const c = st.gates[g].checks.find(c => c.item.startsWith(item));
-    if (!c) throw new Error(`Check item not found: ${item}`);
-    c.pass = !!pass;
-    st.gates[g].pass = st.gates[g].checks.every(c => c.pass);
-    writeState(st);
-    return { gate: g, pass: st.gates[g].pass };
-  }
-  function writeHandoff() {
-    const st = readState();
-    const n = st.seq.amendment;
-    const h = path.join(dir, 'handoff.md');
-    if (fs.existsSync(h)) {
-      const arch = path.join(dir, 'archive', `handoff-${n}.md`);
-      if (!fs.existsSync(arch)) fs.copyFileSync(h, arch); // freeze the version being replaced
-    }
-    fs.writeFileSync(h, [
-      '# Handoff snapshot (mechanical, generated by Keel)',
-      '',
-      `> Snapshot @ amendment #${n} · phase=${st.phase} · ${new Date().toISOString()}.`,
-      '> Guarded core (DATUM.md) followed by the derived technical elaboration (TECHNICAL.md).',
-      '> A plan/build phase receiving this must not need to make further design decisions.',
-      '> Earlier frozen versions: archive/handoff-<n>.md; this file rolls forward on every design amendment.',
-      '',
-      '---',
-      '',
-      fs.readFileSync(datumPath, 'utf8'),
-      '',
-      '---',
-      '',
-      getTechnical(),
-    ].join('\n'));
-    return h;
-  }
-  function setPhase(to) {
-    requireInit();
-    const st = readState();
-    if (to === 'tech' && !(st.gates.g1 && st.gates.g1.pass)) throw new Error('G1 not passed (hard gate): finish sign-off, keel_gate g1, and the semantic records first.');
-    if (to === 'handoff' && !(st.gates.g2 && st.gates.g2.pass)) throw new Error('G2 not passed (hard gate): run keel_gate g2 and the semantic records first.');
-    const from = st.phase;
-    st.phase = to; writeState(st);
-    let snapshot = null;
-    if (to === 'handoff') snapshot = writeHandoff();
-    return { from, to, snapshot };
-  }
-
   // ---------- Maintenance ----------
   function cleanOrphans() {
     requireInit();
@@ -525,10 +427,10 @@ function makeKeel(root) {
       summary: `Removed ${orphans.length} orphan ## block(s): ${orphans.map(o => o.title).slice(0, 5).join('; ')}`,
       consent: 'batch-notified',
     });
-    return { removed: orphans.length, titles: orphans.map(o => o.title), amendment: n };
+    return { removed: orphans.length, titles: orphans.map(o => o.title), amendment: n, note: 'Removed blocks (e.g. legacy 02/03 sections from v1) are gone from DATUM — archive their content elsewhere first if it matters.' };
   }
 
-  // ---------- Compaction / exemption / health ----------
+  // ---------- Compaction / exemption / health / config ----------
   function compact(args) {
     requireInit();
     const entries = args.entries || [];
@@ -584,23 +486,38 @@ function makeKeel(root) {
       phase: st.phase,
       coreAmendments: epochCore, coreAmendmentsLifetime: lifetimeCore, totalAmendments: rows.length,
       yellowFlagBasis: 'core amendments since the last compaction (lifetime count is reported separately and never resets)',
-      yellowFlag: epochCore > 6 ? `Many core amendments since the last compaction (${epochCore}; lifetime ${lifetimeCore}): the concept may never have converged; consider re-running the skeleton test.` : null,
+      yellowFlag: epochCore > 6 ? `Many core amendments since the last compaction (${epochCore}; lifetime ${lifetimeCore}): the concept may never have converged; consider re-examining the principles.` : null,
       oscillation: { note: 'Reference metric only — never a threshold, never gates anything.', groups: oscillating },
       pendingProposals: Object.values(st.proposals).map(p => ({ id: p.id, summary: p.summary, level: p.effLevel })),
     };
   }
+  function config(args) {
+    requireInit();
+    const st = readState();
+    if (typeof args.consent === 'boolean') st.consentMode = args.consent;
+    if (typeof args.steward === 'boolean') st.stewardMode = args.steward;
+    writeState(st);
+    return {
+      phase: st.phase, consentMode: st.consentMode, stewardMode: st.stewardMode,
+      effective: { consent: st.phase === 'authoritative' && st.consentMode, steward: st.phase === 'authoritative' && st.stewardMode },
+      note: 'Switches take effect while the DATUM is authoritative. No re-validation is required to flip either way — the user decides.',
+    };
+  }
   function digestText() {
     requireInit();
+    const st = readState();
+    const mode = st.phase === 'draft'
+      ? 'phase=draft (incomplete — consent mechanism and STEWARD inactive; write freely)'
+      : `phase=authoritative · consent=${st.consentMode ? 'on' : 'off'} · steward=${st.stewardMode ? 'on' : 'off'}`;
     const L = [
-      '[Keel] Authoritative design document: .keel/DATUM.md (project root). Live state is in the file; read via keel_read / keel_digest, write only via keel_* tools (MCP server "keel"). Full technical elaboration: .keel/TECHNICAL.md (derived). Below is a verbatim snapshot.',
-      `[Keel] phase=${readState().phase}  (mechanical excerpt — verbatim, not AI-paraphrased)`,
+      '[Keel] Authoritative design notebook: .keel/DATUM.md (project root). Live state is in the file; read via keel_read / keel_digest, write only via keel_* tools (MCP server "keel"). Below is a verbatim snapshot.',
+      `[Keel] ${mode}  (mechanical excerpt — verbatim, not AI-paraphrased)`,
     ];
     for (const ln of (getSection('intent') || '').split(/\r?\n/)) {
       if (/^-\s*(Goal \(one sentence\)|Out of scope|Success criteria):/.test(ln) && filled(ln)) L.push(ln.trim());
       if (/^- Requirement R\d+:/.test(ln) && filled(ln)) L.push(ln.trim());
     }
     for (const ln of (getSection('concept') || '').split(/\r?\n/)) if (/^- P\d+/.test(ln) && filled(ln)) L.push(ln.trim());
-    for (const r of parseIndexRows().slice(0, 6)) L.push(`${r.id}: ${r.text} (implements: ${r.impl.join(', ')}; detail: ${r.detail})`);
     for (const g of parseGlossaryRows().slice(0, 6)) L.push(`Term ${g.term} = ${g.def} (load-bearing: ${g.load})`);
     for (const p of parseRefs().slice(0, 6)) L.push(`Protected ref ${p.ref} → ${p.path} (carries: ${p.carries.join(', ')})`);
     const rows = parseAmendments();
@@ -608,90 +525,95 @@ function makeKeel(root) {
       L.push('Recent amendments:');
       for (const r of rows.slice(-3)) L.push(`  #${r.n} [${r.level}] ${r.position} — ${r.summary}`);
     }
-    L.push('[Keel/STEWARD] Before editing anything, ask: does this change touch P*, contracts (index), ownership, or module boundaries? If yes, follow the keel_* amendment protocol — silent divergence is forbidden.');
+    L.push('[Keel] Habit: after you finish a plan and before implementing, check it against this notebook. Conflicts or disagreements → propose an amendment (or record an exemption with the user) — silent divergence is forbidden.');
     return L.join('\n');
   }
   function status() {
     requireInit();
     const st = readState();
-    const items = parseTechItems();
-    return {
+    const out = {
       phase: st.phase,
-      gates: Object.fromEntries(Object.entries(st.gates).map(([g, v]) => [g, v.pass])),
+      modes: { consent: st.consentMode, steward: st.stewardMode },
+      effective: { consent: st.phase === 'authoritative' && st.consentMode, steward: st.phase === 'authoritative' && st.stewardMode },
+      ready: readyCheck(),
       counts: {
         requirements: (getSection('intent') || '').split(/\r?\n/).filter(l => /^- Requirement R\d+:/.test(l) && filled(l)).length,
         principles: (getSection('concept') || '').split(/\r?\n/).filter(l => /^- P\d+\s*[:：]/.test(l) && filled(l)).length,
         terms: parseGlossaryRows().length,
-        contracts: parseIndexRows().length,
-        techFilled: items.filter(i => !i.body.includes('(TBD)') && i.contracts.length > 0).length,
         protectedRefs: parseRefs().length,
         amendments: parseAmendments().length,
       },
       ...health(),
     };
+    if (fs.existsSync(legacyTechPath)) out.legacy = ['TECHNICAL.md (v1 layout) — now an ordinary unprotected file; admit via keel_ref_add, archive, or delete.'];
+    return out;
   }
 
   return {
     exists, init, propose, confirm, reject, ripple, glossaryRegister,
     refAdd, refRemove, refsVerify, cleanOrphans,
-    gate, gateRecord, setPhase, compact, exempt, health, digestText, status,
-    getSection, getTechnical,
+    compact, exempt, health, config, digestText, status, readyCheck,
+    getSection,
   };
 }
 
 // ---------- MCP tool table ----------
 const TOOLS = [
-  { name: 'keel_init', description: 'Create .keel/ in the current project (DATUM.md guarded core, TECHNICAL.md derived elaboration, AMENDMENTS.md log, probes/, archive/, state.json). Refuses to overwrite unless force=true.',
-    inputSchema: { type: 'object', properties: { project: { type: 'string' }, force: { type: 'boolean' } }, required: ['project'] } },
-  { name: 'keel_digest', description: 'Mechanical excerpt (verbatim slicing, not AI paraphrase): doc pointer, phase, goal/out-of-scope/requirements/P*/top contracts/terms/protected refs/recent amendments/STEWARD reminder.', inputSchema: { type: 'object', properties: {} } },
-  { name: 'keel_status', description: 'Phase, gate states, counts, pending proposals, health summary (incl. the oscillation reference metric).', inputSchema: { type: 'object', properties: {} } },
-  { name: 'keel_read', description: 'Read one section verbatim: DATUM sections (intent/glossary/concept/ledger/index/refs) or the technical elaboration (technical).', inputSchema: { type: 'object', properties: { section: { type: 'string', enum: ['intent', 'glossary', 'concept', 'ledger', 'index', 'refs', 'technical'] } }, required: ['section'] } },
-  { name: 'keel_ripple', description: 'Traceability closure: given TECHNICAL item names, contract ids, or glossary terms, mechanically compute the core references touched and the protected references now suspected stale.', inputSchema: { type: 'object', properties: { targets: { type: 'array', items: { type: 'string' } } }, required: ['targets'] } },
-  { name: 'keel_write_section', description: 'Write DATUM sections and/or TECHNICAL.md. Pass section+content for a single write, or sections:[{section, content}] to batch a logical change across sections — one consent and one amendment row cover the whole batch. Core tier is staged pending consent; peripheral tier applies immediately and is logged; peripheral writes whose traceability closure touches core (or whose contracts: link is unindexed) are auto-escalated. In handoff phase, every applied amendment mechanically refreshes handoff.md (previous versions frozen to archive/).',
+  { name: 'keel_init', description: 'Create .keel/ in the current project (DATUM.md guarded notebook + AMENDMENTS.md log + state.json + archive/). notebook:true builds a pure-notebook project (consent and steward stay off). Starts in draft phase: all writes apply immediately.',
+    inputSchema: { type: 'object', properties: { project: { type: 'string' }, notebook: { type: 'boolean' } }, required: ['project'] } },
+  { name: 'keel_digest', description: 'Mechanical excerpt (verbatim slicing, not AI paraphrase): doc pointer, mode line (phase + switches), goal/out-of-scope/requirements/P*, top terms/protected refs, recent amendments, glance reminder.',
+    inputSchema: { type: 'object', properties: {} } },
+  { name: 'keel_status', description: 'Phase, mode switches (configured + effective), readiness checks, counts, pending proposals, health summary (incl. the oscillation reference metric).',
+    inputSchema: { type: 'object', properties: {} } },
+  { name: 'keel_read', description: 'Read one section verbatim: intent / glossary / concept / refs.',
+    inputSchema: { type: 'object', properties: { section: { type: 'string', enum: ['intent', 'glossary', 'concept', 'refs'] } }, required: ['section'] } },
+  { name: 'keel_ripple', description: 'Traceability closure: given P* ids or glossary terms, mechanically compute the core references touched and the protected references now suspected stale.',
+    inputSchema: { type: 'object', properties: { targets: { type: 'array', items: { type: 'string' } } }, required: ['targets'] } },
+  { name: 'keel_write_section', description: 'Write DATUM sections. Pass section+content for a single write, or sections:[{section, content}] to batch one logical change — one amendment row (and one consent, when active) covers the whole batch. Core tier is staged pending consent while the document is authoritative and consent is ON; otherwise everything applies immediately and is logged (ai-managed). Peripheral writes whose traceability closure touches core are auto-escalated.',
     inputSchema: { type: 'object', properties: {
-      section: { type: 'string', enum: ['intent', 'glossary', 'concept', 'ledger', 'index', 'refs', 'technical'] },
+      section: { type: 'string', enum: ['intent', 'glossary', 'concept', 'refs'] },
       content: { type: 'string' },
       sections: { type: 'array', description: 'batch form: [{section, content}, …] for one logical change across sections', items: { type: 'object', properties: { section: { type: 'string' }, content: { type: 'string' } }, required: ['section', 'content'] } },
       level: { type: 'string', enum: ['core', 'peripheral'] },
       summary: { type: 'string', description: '≤120 characters' }, rationale: { type: 'string' },
-      overturns: { type: 'string', description: 'Ledger entries this supersedes, e.g. L3 (feeds the oscillation reference metric)' }, position: { type: 'string' },
+      overturns: { type: 'string', description: 'Entries this supersedes, e.g. a prior principle (feeds the oscillation reference metric)' }, position: { type: 'string' },
     }, required: ['level', 'summary'] } },
   { name: 'keel_confirm', description: 'Apply a staged core-tier proposal after the user explicitly consented in the conversation. consent_evidence = the user\'s consenting words (audit trail). Returns staleRefs when protected documents are now suspected outdated.',
     inputSchema: { type: 'object', properties: { proposal_id: { type: 'string' }, consent_evidence: { type: 'string' } }, required: ['proposal_id', 'consent_evidence'] } },
-  { name: 'keel_reject', description: 'Discard a staged proposal.', inputSchema: { type: 'object', properties: { proposal_id: { type: 'string' } }, required: ['proposal_id'] } },
-  { name: 'keel_gate', description: 'Mechanical checklist: g1 (intent/principles/ledger/glossary) or g2 (TECHNICAL nine items with contracts + index join integrity). Semantic items default to false and are recorded via keel_gate_record.',
-    inputSchema: { type: 'object', properties: { gate: { type: 'string', enum: ['g1', 'g2'] } }, required: ['gate'] } },
-  { name: 'keel_gate_record', description: 'Record a semantic check result (skeleton test, user review) with evidence. The gate passes as a whole only after every item passes.',
-    inputSchema: { type: 'object', properties: { gate: { type: 'string', enum: ['g1', 'g2'] }, item: { type: 'string' }, pass: { type: 'boolean' }, evidence: { type: 'string' } }, required: ['gate', 'item', 'pass', 'evidence'] } },
-  { name: 'keel_phase', description: 'Advance the phase: concept→tech requires G1 passed; tech→handoff requires G2 passed and mechanically snapshots handoff.md (DATUM + TECHNICAL bundle). Hard gates.',
-    inputSchema: { type: 'object', properties: { to: { type: 'string', enum: ['concept', 'tech', 'handoff'] } }, required: ['to'] } },
-  { name: 'keel_glossary_register', description: 'Register/update a term. The AI fills the semantic fields, the server persists the row; terms load-bearing at P*/01/00 automatically go through the core consent flow.',
+  { name: 'keel_reject', description: 'Discard a staged proposal.',
+    inputSchema: { type: 'object', properties: { proposal_id: { type: 'string' } }, required: ['proposal_id'] } },
+  { name: 'keel_config', description: 'Flip the two switches: consent (core-write consent mechanism) and steward (structured post-plan check). Both default ON when the DATUM becomes authoritative; notebook projects start with both OFF. No re-validation is required to flip — the user decides.',
+    inputSchema: { type: 'object', properties: { consent: { type: 'boolean' }, steward: { type: 'boolean' } } } },
+  { name: 'keel_glossary_register', description: 'Register/update a term. The AI fills the semantic fields, the server persists the row; terms load-bearing at P*/01/00 are core-tier (staged while consent is active).',
     inputSchema: { type: 'object', properties: { term: { type: 'string' }, definition: { type: 'string' }, load_bearing: { type: 'array', items: { type: 'string' } }, aliases: { type: 'array', items: { type: 'string' } } }, required: ['term', 'definition'] } },
-  { name: 'keel_ref_add', description: 'Admit a derived document into the anti-degradation scope (protected reference). Records whole-file SHA-256 at admission; carries = the core claims (P*/C*) it renders. Extends the protection boundary → core consent flow.',
+  { name: 'keel_ref_add', description: 'Admit a derived document into the anti-degradation scope (protected reference). Records whole-file SHA-256 at admission; carries = the core claims (P*/01/00 refs) it renders. Core-tier while consent is active (extends the protection boundary).',
     inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'relative to project root' }, carries: { type: 'array', items: { type: 'string' } }, label: { type: 'string' } }, required: ['path', 'carries'] } },
-  { name: 'keel_ref_remove', description: 'Remove a protected reference (shrinks the protection boundary; core consent flow). The document itself is untouched.', inputSchema: { type: 'object', properties: { ref: { type: 'string' } }, required: ['ref'] } },
-  { name: 'keel_refs_verify', description: 'Re-hash every active protected reference and report matches/mismatches. Tamper-evidence only — never blocks; regenerate or re-admit after intentional changes.', inputSchema: { type: 'object', properties: {} } },
-  { name: 'keel_clean', description: 'Maintenance: remove orphan "## " blocks from DATUM.md that no tool can reach (historical write misplacements). Keyed sections and the preamble are untouched; logged as a maintenance amendment (batch-notified).', inputSchema: { type: 'object', properties: {} } },
+  { name: 'keel_ref_remove', description: 'Remove a protected reference (shrinks the protection boundary; core-tier while consent is active). The document itself is untouched.',
+    inputSchema: { type: 'object', properties: { ref: { type: 'string' } }, required: ['ref'] } },
+  { name: 'keel_refs_verify', description: 'Re-hash every active protected reference and report matches/mismatches. Tamper-evidence only — never blocks; regenerate or re-admit after intentional changes.',
+    inputSchema: { type: 'object', properties: {} } },
+  { name: 'keel_clean', description: 'Maintenance: remove orphan "## " blocks from DATUM.md that no tool can reach (historical misplacements, legacy v1 sections). Keyed sections and the preamble are untouched; logged as a maintenance amendment.',
+    inputSchema: { type: 'object', properties: {} } },
   { name: 'keel_compact', description: 'Compact the amendment log: the AI provides merged summary entries, the server archives the raw log verbatim (never deleted). Refuses below 5 entries.',
     inputSchema: { type: 'object', properties: { entries: { type: 'array', items: { type: 'object', properties: { position: { type: 'string' }, summary: { type: 'string' } }, required: ['position', 'summary'] } } }, required: ['entries'] } },
-  { name: 'keel_exempt', description: 'Explicit waiver: a change conflicts with DATUM but the user waves it through; recorded for audit.', inputSchema: { type: 'object', properties: { summary: { type: 'string' }, reason: { type: 'string' } }, required: ['summary', 'reason'] } },
-  { name: 'keel_health', description: 'Health summary: core-amendment counts (epoch since last compaction + lifetime), oscillation reference metric (never a threshold), pending proposals.', inputSchema: { type: 'object', properties: {} } },
+  { name: 'keel_exempt', description: 'Explicit waiver: a change conflicts with DATUM but the user waves it through; recorded for audit.',
+    inputSchema: { type: 'object', properties: { summary: { type: 'string' }, reason: { type: 'string' } }, required: ['summary', 'reason'] } },
+  { name: 'keel_health', description: 'Health summary: core-amendment counts (epoch since last compaction + lifetime), oscillation reference metric (never a threshold), pending proposals.',
+    inputSchema: { type: 'object', properties: {} } },
 ];
 
 function startStdio() {
   const keel = makeKeel(process.cwd());
   const IMPL = {
-    keel_init: a => keel.init(a.project, a.force),
+    keel_init: a => keel.init(a.project, a.notebook),
     keel_digest: () => keel.digestText(),
     keel_status: () => keel.status(),
-    keel_read: a => (a.section === 'technical' ? keel.getTechnical() : (keel.getSection(a.section) || '(empty)')),
+    keel_read: a => (keel.getSection(a.section) || '(empty)'),
     keel_ripple: a => keel.ripple(a.targets),
     keel_write_section: a => keel.propose(a),
     keel_confirm: a => keel.confirm(a),
     keel_reject: a => keel.reject(a),
-    keel_gate: a => keel.gate(a.gate),
-    keel_gate_record: a => keel.gateRecord(a),
-    keel_phase: a => keel.setPhase(a.to),
+    keel_config: a => keel.config(a),
     keel_glossary_register: a => keel.glossaryRegister(a),
     keel_ref_add: a => keel.refAdd(a),
     keel_ref_remove: a => keel.refRemove(a),

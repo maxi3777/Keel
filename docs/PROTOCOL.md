@@ -1,139 +1,91 @@
-# Keel Protocol (v1.1)
+# Keel Protocol — v2.0.0
 
-Keel's heart is not a workflow — it is the **non-degradable core** of a project: an authoritative design document (DATUM) with a bounded altitude and an amendment protocol, plus a derived elaboration layer that joins back to it. The phases, participation rules, and iteration rules are protective mechanisms grown around that core.
+> v2 doctrine: Keel is the AI's **authoritative notebook**. It records requirements and the concept model, keeps them from silently degrading, and otherwise leaves the agent free. There is no workflow to direct, no phase pipeline, no gates, no handoff bundle. The agent thinks and plans autonomously; the only ritual is the glance — *after planning, before implementing, check the plan against the DATUM.*
+>
+> What changed from v1: TECH/HANDOFF phases, G1/G2 gates, the Contract Index (03), the Trade-off Ledger (02, folded into the amendment log's `supersedes` field), TECHNICAL.md, handoff.md, and the slash-command surface were removed. Iteration functions became standalone sub-skills. Consent and STEWARD became switchable modes. See §9 Migration.
 
-This is the full specification. For a gentler introduction, read the README first.
+## 1. Axioms
 
-## 0. Design axioms
+1. **Semantics belong to the AI; determinism belongs to the server.** Every `.keel/` read/write goes through `keel_*` tools; hand edits are forbidden and the amendment log is server-owned.
+2. **Record outcomes, never process.** The notebook holds what was decided (requirements, principles, concept model), not how the agent reasoned. Nothing constrains the agent before it commits.
+3. **Authority is bounded and switchable.** The DATUM is the single authoritative record *of its altitude* (non-degradable design facts). Consent and stewardship are switches the user controls freely — flipping either way never requires re-validation.
+4. **Anything programmable is code.** File creation, validation, tiering, hashing, slicing, logging — never delegated to the model.
 
-1. **Membership criterion: non-degradability.** Information enters DATUM not because it is useful, but because losing or drifting it would degrade the project. Everything derivable from the core lives outside it and can be regenerated.
-2. **Semantics belong to the AI; determinism belong to code.** Anything programmable (persisting files, validating formats, appending log rows, slicing digests, computing joins and closures, hashing references, checking checklists, counting oscillation) is executed by the MCP server, never by the model.
-3. **Authority comes from restraint.** DATUM keeps its authority precisely because it does not track function-level changes and does not try to contain everything; the authority stays real because every amendment is forced to be visible.
-4. **Enforcement lives outside the model.** Prompt-only discipline decays. Enforcement triangle: the skill layer guides, hooks force, the MCP server is the only legal write path.
-5. **Design principles are weighted priorities, not invariants.** When an iteration makes P1 fight P2, the guard escalates the tension to the user; it never adjudicates.
-6. **The oscillation metric is a reference only** — never a threshold, never a gate.
-
-## 1. Protection ladder and file layout
-
-Four protection levels; the files are organized by level, not by size:
+## 2. File layout (protection levels)
 
 ```
-L1  write-gating (before the fact)   DATUM.md — the guarded core
-L2  tamper-evidence (after the fact)  protected references (derived docs with admitted hashes)
-L3  audit (after the fact)            code vs the Contract Index (reconcile)
-L0  unprotected                       TECHNICAL.md and any other derived document
+L1  write-gating (before the fact)    DATUM.md — guarded core, while consent is ON
+L2  tamper-evidence (after the fact)  R Protected References (hash-verified)
+L0  unprotected                       everything else
 ```
 
-```
-.keel/
-├─ DATUM.md       guarded core (L1)
-│   00 Intent · G Glossary · 01 Concept (P* + concept model + parking lot)
-│   02 Trade-off Ledger · 03 Contract Index (thin) · R Protected References
-├─ TECHNICAL.md   derived elaboration (L0): T1..T9, joined to the index via contracts:
-├─ AMENDMENTS.md  history: append-only, compacted into archive/ (never deleted)
-├─ handoff.md     mechanical bundle (DATUM + TECHNICAL) snapshotted after G2
-├─ probes/        subagent experiment records (skeleton tests etc.)
-└─ archive/       raw amendment logs preserved by compaction
-```
+- `.keel/DATUM.md` — `00 Intent` (goal one-sentence · success criteria · out of scope · numbered requirements `R*`) · `G Glossary` (term / concept-level definition / load-bearing at / aliases / status) · `01 Concept` (`- P1: …` weighted principles, 3–5; concept model: entities/flows/invariants in everyday words; parking lot) · `R Protected References` (ref / path / carries / sha256 / admitted / status).
+- `.keel/AMENDMENTS.md` — append-only: `# / time / tier / location / summary / supersedes / consent`. Consent values: `yes ("…")` (user's words), `batch-notified` (peripheral), `ai-managed` (draft phase or consent OFF), `exempted`. Compacted into `archive/amendments-<n>.md` (verbatim, never deleted).
+- `.keel/state.json` — `phase` (`draft`|`authoritative`) · `consentMode` · `stewardMode` · `proposals` (staged) · `seq` counters · `coreCount` (lifetime, survives compaction).
+- `.keel/archive/`.
 
-Correctness of the core is bidirectional: it must be **complete** (every design-level fact of the project is represented — missing facts mean rogue code) and **consistent** (every represented fact is still true — untruth means a stale document). Reconcile checks both directions.
+## 3. Modes and readiness
 
-**The Contract Index ↔ TECHNICAL join.** The index holds one guarded line per contract/boundary/stack choice with its `implements: P*` and a `detail: T#` link; TECHNICAL.md elaborates T1..T9, each carrying `contracts: Cn` back-links. `implements:` lives only in the index (single source of traceability); unindexed contract ids are mechanically rejected via closure escalation. Ripple closures are computed as T → C → P joins.
+- **draft**: the mechanical readiness check has not passed. All writes apply immediately; would-be-core writes are logged `ai-managed`. Consent and steward are inactive by design.
+- **Readiness** (computed from content, never stored): 00 goal filled · 00 out-of-scope filled · ≥1 filled requirement · 01 principles 3–5 filled · ≥1 active glossary term.
+- **Activation**: the write that completes readiness flips the phase to `authoritative`. Both switches default ON (a `notebook:true` init keeps both OFF). The server returns `activated` with the switch states and instructs the agent to **announce the activation to the user**.
+- **Switches**: `keel_config {consent, steward}` — booleans, effective only while authoritative. consent OFF ⇒ all writes immediate, logged `ai-managed`. steward OFF ⇒ only the glance habit. Flipping is the user's call, in either direction, with no re-validation.
 
-**Altitude test** (what counts as design-level, i.e. index-worthy): touches P*/concept model/module responsibility & boundaries/data ownership/cross-module contracts/user-visible behavior contracts/stack-level choices. Contract-preserving internals, UI tweaks, renames, equivalent refactors never enter DATUM.
-
-## 2. Consent tiers
-
-| Tier | Scope | Flow |
-|---|---|---|
-| Core (blocking) | 00 requirements/intent; 01 principles & concept model; the Contract Index; protected references; load-bearing terms | Explain (rationale ≥8 chars) + ripple → explicit user consent → `keel_confirm` (consent_evidence = the user's consenting words, audit trail) |
-| Peripheral (notify) | TECHNICAL.md detail with resolvable contracts; ledger narrative; compaction | `keel_write_section` applies and logs → batch notification at session end / a gate / `/keel status` |
-| Escalation rule | Closure touches core, or a `contracts:` id is unindexed | Server auto-escalates to core staging |
-
-Batch writes: one proposal may span multiple sections (`sections:[…]`) — one consent and one amendment row cover the whole logical change, and the sections cannot drift apart between writes. Consent economy: a user message that specifies a change verbatim counts as consent for that exact change only when its ripple closure is empty; a non-empty closure must be shown before confirming (the user may decide differently after seeing it).
-
-A well-converged design should not produce many core amendments. **Core-amendment frequency is a quality gauge** — after G1, frequent core changes raise a yellow flag (re-run the skeleton test) instead of being silently absorbed.
-
-## 3. Phase protocol
+## 4. The write path (cross-cutting)
 
 ```
-        manual activation
-IDLE ────────────▶ CONCEPT ──G1──▶ TECH ──G2──▶ HANDOFF ──▶ handed to plan/build
-                     │  ▲
-                     ▼  │ insights overturned: technical phase may roll back via the ledger
-          ═══ STEWARD resident layer: overlays every session while DATUM exists ═══
+intent → keel_write_section (single or sections-batch)
+  → mechanical validation (known section · no amendments writes · no duplicate
+    section in batch · content non-empty · no "## " inside sections ·
+    summary ≤120 chars; core requires rationale ≥8)
+  → closure scan (glossary load-bearing column · refs carries column;
+    matches of /^(P\d|01|00)/ touch core) → peripheral w/ non-empty closure
+    escalates to core
+  → if peripheral OR consent inactive → apply immediately + audit row
+  → else stage PR-n (per-section baseContent snapshot) → user consent →
+    keel_confirm(consent_evidence ≥2 chars, quoted to 40 in the row)
+  → anti-clobber: any section changed since staging ⇒ confirm refused with
+    recovery instructions (keel_reject, re-propose)
+  → apply → audit row (+lifetime core counter if tier contains core)
+  → staleRefs: protected refs whose carries intersect this change's core refs
+    (computed against the pre-apply snapshot) returned to the agent to relay
+  → maybe-activate readiness (draft → authoritative)
 ```
 
-### CONCEPT — derivation chains D1–D6
+Batch = one logical change across sections: one consent, one audit row. The consent-economy rule (skill-level): a user message that specifies a change verbatim counts as consent only when its ripple closure is empty.
 
-D1 requirement facts (cite R* only) → D2 tensions → D3 key insights ([fact]/[assumption]/[inference]) → D4 principle candidates (3–5, each naming the tension it resolves) → D5 concept model (no class names) → D6 rejected routes (≥1, with reasons). One candidate by default; genuine D3/D4 forks produce 2–3 chains sharing D1/D2. Challenge protocol: attack any Di → ripple → revised chain → core consent → ledgered revision. Iteration is manual and altitude-capped (assumption stress-test / alternative insight generation / constraint-relaxation probe / skeleton test), with prediction declared before execution and deviation recorded after.
+`keel_glossary_register` computes its tier from `load_bearing` (P*/01/00 ⇒ core). `keel_ref_add` / `keel_ref_remove` are core-tier while consent is active (they move the protection boundary).
 
-### G1 (hard gate)
+## 5. The glance and the post-plan check (STEWARD)
 
-User signs off each P* in priority order (ledgered) → `keel_gate g1` (mechanical: goal/out-of-scope/≥1 requirement/3–5 principles/≥1 ledger entry/≥1 term) → skeleton test, recorded via `keel_gate_record` (preferred: a genuine fresh-process rebuild — e.g. `codex exec --ephemeral` where a shell/CLI exists — evidence labeled `external (fresh process)`; self-simulation allowed only where no facility exists, evidence labeled `self-simulated`, user informed the check is weakened) → `keel_phase {to:"tech"}`.
+- **Glance (always, every mode)**: after finishing a plan, before implementing — check against goal/scope/requirements/principles/concept model. No conflict → proceed. Conflict → amend / drop / `keel_exempt` (reason mandatory). Disagreement with the DATUM → propose an amendment with rationale.
+- **Post-plan check (steward ON)**: the same moment, structured — enumerate touched areas, compare against P*, `keel_ripple` when unsure, relay `staleRefs`, escalate principle tensions to the user (three exits: adjust weights / revise the plan / revise the principle). New requirements diff against 00 first; scope growth becomes a visible proposal, never silent absorption.
+- **Residency mechanics**: SessionStart hook injects the verbatim digest (strict-JSON `additionalContext`; doc pointer first, mode line, goal/scope/requirements, P*, top 6 terms, top 6 refs, last 3 amendments, glance reminder); PostToolUse hook refreshes after every confirm; hook-less hosts call `keel_digest` themselves.
 
-### TECH — index + elaboration as one logical unit
+## 6. Protected references (L2)
 
-Decision menus (options + recommendation + reasoning + cost of being wrong), choices ledgered. Index entries (core consent) and TECHNICAL items (peripheral, join-escalated when needed) are written together. Concreteness bar: **the plan phase receiving the handoff makes no further design decisions.**
+Write-then-admit: the owning workflow edits freely; `keel_ref_add {path, carries}` pins the whole-file SHA-256 at admission (core-tier while consent is active); `keel_refs_verify` re-hashes — report, never block; after intentional regeneration, re-admit (remove + add). Core amendments return `staleRefs` for affected refs; regeneration belongs to the owning workflow — Keel detects, never regenerates.
 
-### G2 (hard gate) → HANDOFF
+## 7. Maintenance and health
 
-`keel_gate g2`: nine TECHNICAL items filled with resolvable `contracts:` links; every index row has `implements` + `detail`; join integrity in both directions → user reviews index + summary (`keel_gate_record`) → `keel_phase {to:"handoff"}` snapshots the bundle (DATUM + TECHNICAL). The bundle then **rolls forward mechanically**: every design amendment applied while in handoff phase rewrites `handoff.md` (header annotated `Snapshot @ amendment #N`) and freezes the replaced version to `archive/handoff-<n>.md` — downstream staleness never depends on agent diligence.
+- `keel_status` — phase, switches (configured + effective), readiness checks, counts, pending proposals, batch notifications, legacy-file notes.
+- `keel_clean` — removes orphan `## ` blocks (incl. legacy v1 02/03 headers; maintenance row records titles only).
+- `keel_compact` — refused below 5 rows; the AI supplies merged summaries; the raw log is archived verbatim; the lifetime core counter survives.
+- `keel_health` — epoch count (since last compaction; labeled) + lifetime count; yellow flag above 6 epoch core amendments; oscillation (≥2 overturns at one position) is a reference metric only — never a threshold, never a gate.
+- `keel_exempt` — explicit waiver, reason mandatory.
 
-### STEWARD — resident stewardship
+## 8. Iteration sub-skills (outside the main module)
 
-1. **Session bootstrap**: SessionStart hook injects the verbatim digest, led by the document pointer (path + access method) so any workflow in the session can find and derive from the core; a PostToolUse hook refreshes the digest after every applied core amendment — no new session required. Hook transport: the digest rides in hook JSON `additionalContext` (strict-schema stdout; hosts discard plain text), and all plugin-relative paths use the host-expanded `${CLAUDE_PLUGIN_ROOT}` template variable — never bare relative paths, which hosts resolve against the session working directory.
-2. **Pre-edit check**: does this touch P*, index contracts, ownership, boundaries? `keel_ripple` when unsure; `staleRefs` in the result list protected documents now suspected outdated.
-3. **On conflict, stop**: amend / drop / explicit exemption (`keel_exempt`, reason mandatory). New requirements diff against 00 first; silent absorption is forbidden.
-4. **Principle guard**: iteration outputs pass the P* check; tensions escalate to the user (three exits: adjust weights / revise the iteration / revise the principle).
+`keel-stress-test` (attack assumptions), `keel-alternatives` (2–3 genuinely different directions), `keel-relax-probe` (constraint relaxation cost/benefit), `keel-skeleton` (rebuild the concept model from 00 + P* alone; fresh-process evidence preferred, self-simulation labeled). All four: declare the prediction first, record the deviation; work with or without a DATUM (skeleton requires one); temp files live in the system temp dir and are deleted after; adopted findings return through the main module's write path.
 
-## 4. Protected references (L2)
+## 9. Migration (v1 → v2)
 
-Derived documents admitted into the anti-degradation scope:
+`state.json` phases map automatically (`concept`→draft, `tech`/`handoff`→authoritative). TECHNICAL.md and 02/03 DATUM sections become ordinary unprotected content — archive elsewhere if needed, admit via `keel_ref_add`, strip headers with `keel_clean` (titles logged, bodies not — archive first). `probes/` is no longer created; existing probe files are inert.
 
-- **Admission** (`keel_ref_add {path, carries}`): the file must exist (path relative to the project root); whole-file SHA-256 is recorded; `carries` lists the core claims (P*/C*/R*) the document renders. Admission extends the protection boundary → core consent.
-- **Verification** (`keel_refs_verify`): re-hash and report matches/mismatches. Tamper-evidence, not write-gating — the owning workflow edits freely; mismatches are reported, never blocked. After an intentional regeneration, re-admit (remove + add) with consent.
-- **Stale propagation**: when a core amendment lands, `keel_confirm` returns `staleRefs` — the owning workflow regenerates. Keel detects; it does not regenerate (it does not know the derivation function). Relaying the stale list to the user is the host agent's job.
-- **Removal** (`keel_ref_remove`): shrinks the boundary (core consent); the document itself is untouched.
+## 10. Failure modes
 
-Granularity decision (v1.1): whole-file hash — admitted documents are expected to be write-then-admit and rarely edited, so whole-file fidelity with zero intrusion beats block-marker precision; claim-block markers remain a future refinement if edit frequency grows.
+Abandoned staging → visible in `keel_status`, discard with `keel_reject` · orphan `## ` blocks → `keel_clean` · unindexed contracts (v1) → no longer possible; the index is gone · protected-doc drift → `keel_refs_verify` report + regenerate + re-admit · corrupted `state.json` → conservative defaults (draft); AMENDMENTS.md is the durable history.
 
-## 5. Glossary (G)
+## 11. Research provenance
 
-The language-level core. Registration bar: load-bearing in DATUM or an ambiguity history. Consent tier inherited from where a term is load-bearing (P*/01/00 = core). Introduction order: concept → purpose → term, registered on first appearance; the table arbitrates same-word-two-meanings conflicts. The digest carries the top terms so every session speaks the same language.
-
-## 6. Anti-bloat
-
-1. Entry templates with field caps (summary ≤120 characters).
-2. Compaction (threshold 5): AI-merged summaries; raw log archived verbatim, never deleted.
-3. Promotion by reuse: only entries referenced later are worth carrying into summaries.
-4. The core is size-capped by its membership criterion: it contains only non-degradable information; the fat elaboration lives in the unprotected TECHNICAL.md.
-
-## 7. Health and oscillation (reference metric)
-
-`keel_health` / `keel_status`: dual core-amendment counts — **epoch** (since the last compaction, the yellow-flag basis, threshold-free label included) and **lifetime** (a state counter that survives compaction) — plus oscillation (same location revised back-and-forth ≥2 times, computed mechanically from `supersedes` fields). **Displayed only; no threshold; gates anything—never.**
-
-## 8. Failure modes (honest boundaries)
-
-1. Threshold mis-calibration → noise or a dead document. Outcomes land in the amendment log; reviewed at every gate.
-2. Derivation theater: a user who only rubber-stamps gets no concept-phase value.
-3. Tasks too small: discourage activation below a complexity bar.
-4. Single design authority: v1 does not handle concurrent multi-agent DATUM authorship.
-5. Whole-file hashing flags cosmetic satellite edits as mismatches — acceptable while satellites are rarely edited; revisit with claim-block markers if that changes.
-6. Stale-satellite regeneration is not Keel's job; if the host agent fails to relay `staleRefs`, satellites silently age.
-7. Keel deliberately does not run autonomous design evolution.
-
-## 9. Research provenance
-
-| Mechanism | Origin |
-|---|---|
-| D1–D3 problem-understanding first / assumption ledger | Internal research round 1 (epistemic loop) |
-| Skeleton test = subagent rebuild | Round-1 finding: self-review without external signal fails; Huang et al. (TACL 2024) |
-| Principle guard: keep-better → priority escalation | Round-2 experiment ranking + RSEA held-out selection, adapted |
-| Archive of rejected routes; re-open on assumption change | Round-2: archive/population ideas (DGM/AlphaEvolve/FunSearch lineage) |
-| Enforcement triangle | Round-2: bare iteration collapsed; structured runs did not |
-| Revision entries "old belief → new evidence → new principle" | Round-2: experience-playbook distillation (ACE lineage), weakened |
-| Iteration protocol "prediction → execution → deviation" | Round-1: prediction–observation–deviation loops |
-| Decision menus + ledger | Round-1: policy value shows in auditability |
-
-Full paper list with links: see the References section of the README.
+See the references table in [`README.md`](../README.md) (14 papers with deliberate-difference notes) and the research summaries in the authors' archives. The core internal evidence remains: unstructured iteration collapsed in rounds 3–4 twice in 384-round controlled experiments; structured runs had zero collapses — hence mechanical enforcement over prompt discipline.

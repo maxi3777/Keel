@@ -1,42 +1,24 @@
 ---
 name: keel
-description: Guards a project's non-degradable core (the DATUM document) — co-created concept design with visible step-by-step derivation, a derived technical elaboration joined to a thin contract index, consent-tiered amendments with audit evidence, protected references for derived documents, and resident cross-session stewardship. Use when the user asks to start or continue a Keel design flow (on slash-command hosts, the command is /keel), mentions DATUM, the contract index, protected references, or the skeleton test — and whenever the working directory contains .keel/DATUM.md (resident STEWARD mode).
+description: An authoritative notebook for the AI — a guarded DATUM recording the project's requirements and concept model so the topic is never forgotten or silently drifted from across sessions. Use whenever the user mentions Keel, and whenever the working directory contains .keel/DATUM.md. After finishing a plan and before implementing, glance at the DATUM; propose amendments when you disagree or when reality has diverged. Also hosts hash-pinned protected references.
 ---
 
-# Keel — Operating Dispatcher
+# Keel — Authoritative Notebook
 
-You are the host agent running Keel. This file is the dispatcher: iron rules first, then phase protocols in `references/` — **read the matching reference file when entering each phase** (they are in this directory).
+Keel is your notebook (好记性不如烂笔头 — a short pencil beats a long memory). It records what must not be forgotten or silently changed — requirements (00), the concept model with weighted principles (01), load-bearing terms (G), protected documents (R) — and keeps it authoritative. Everything else is yours to decide freely: Keel does not direct how you think or work.
 
-## Iron rules (highest priority, all phases)
+## Iron rules
 
-1. **Semantics belong to you; determinism belongs to the server.** Every read/write under `.keel/` goes through `keel_*` tools. Never edit DATUM.md / TECHNICAL.md / AMENDMENTS.md by hand.
-2. **Consent tiers**:
-   - Core (00 intent/requirements, 01 principles & concept model, the Contract Index, protected references, load-bearing terms): show rationale + ripple → obtain the user's **explicit consent** → `keel_confirm` with `consent_evidence` = the user's consenting words.
-   - Peripheral (TECHNICAL.md detail not introducing unindexed contracts, ledger narrative): `keel_write_section` applies and logs; batch-notify at session end / a gate / `/keel status`.
-   - Call `keel_confirm` only after explicit in-conversation consent; never bypass or abandon staged proposals (abandon via `keel_reject`).
-   - **Consent economy**: a user message that specifies a change verbatim counts as consent for that exact change **only when its ripple closure is empty** — compute the closure first; if it is non-empty (or you have not computed it), stop and show the ripple, because the user may decide differently after seeing it.
-3. **Term introduction order**: concept → purpose → term; register via `keel_glossary_register` on first appearance. The glossary arbitrates same-word-two-meanings conflicts on the spot.
-4. **Oscillation is a reference metric only** — never a threshold, never a gate; always label it as such when presenting.
-5. Concept-phase outputs contain no class names and no stack choices; technical details that surface go to the 01 parking lot.
-6. **Protection ladder**: DATUM = write-gated (L1); protected references = tamper-evidenced (L2, hash verify — report, never block); code = reconciled after the fact (L3); other derived docs = unprotected (L0). Match the response to the layer.
+1. **Semantics are yours; determinism belongs to the server.** Every read/write under `.keel/` goes through `keel_*` tools. Never edit the files by hand.
+2. **The glance habit.** After you finish a plan and before implementing, read the digest (or DATUM) and check the plan against it. On conflict: propose an amendment, drop the change, or — with the user — record an explicit exemption (`keel_exempt`, reason mandatory). Silent divergence is forbidden. Disagreeing with the DATUM is legitimate: propose the change with rationale; the notebook is authoritative, not sacred.
+3. **Modes.** While the DATUM is incomplete (`phase=draft`) you write freely — the server logs (ai-managed) but never asks. When the mechanical readiness check passes, the document becomes authoritative and the two switches take effect, both default ON — **announce activation to the user when the server reports it**. `keel_config {consent, steward}` flips them on user request: consent OFF = you self-manage writes (still logged, ai-managed); steward OFF = only the glance habit remains. Flipping never requires re-validation — the user decides.
+4. **Terms**: concept → purpose → term; register load-bearing terms via `keel_glossary_register` in the same turn they first appear. The glossary arbitrates same-word-two-meanings conflicts on the spot.
+5. **Oscillation is a reference metric only** — never a threshold, never a gate; always label it as such when presenting.
+6. **Protection ladder**: DATUM = write-gated while consent is on (L1); protected references = tamper-evidenced (L2, hash verify — report, never block); everything else = unprotected (L0). Match the response to the layer.
 
-## Phase dispatch
+## Operating notes
 
-Get the phase from `keel_status` or the injected digest, then follow:
-
-| Phase | Protocol | Entry action |
-|---|---|---|
-| activation | `references/concept.md` §Activation | `keel_init`, extract & confirm numbered requirements, write 00 |
-| CONCEPT | `references/concept.md` | derivation chains D1–D6; challenge→ripple→consent; G1 |
-| TECH | `references/tech.md` | Contract Index + TECHNICAL.md elaboration; decision menus; G2 |
-| HANDOFF | `references/tech.md` §Handoff | `keel_phase {to:"handoff"}` → server bundles handoff.md |
-| STEWARD | `references/steward.md` | resident whenever `.keel/DATUM.md` exists |
-
-## Quick reference
-
-- `/keel status` → phase, gates, pending proposals, batch notifications, health (oscillation = reference metric).
-- `/keel check <change>` → `keel_ripple` on the targets; treat listed `staleRefs` as protected documents now suspected outdated.
-- `/keel protect <path>` / `/keel unprotect <ref>` → `keel_ref_add` / `keel_ref_remove` (core consent flow).
-- `/keel reconcile` → `keel_refs_verify` + compare index contracts against code; label drift *stale document* vs *rogue code*; propose amendments.
-- Iteration (manual, concept-phase altitude-capped): see `references/concept.md` §Iteration.
-- Digest is injected at session start and refreshed after every `keel_confirm` (PostToolUse hook); re-fetch anytime with `keel_digest`.
+- One skill, natural language: the user describes what they want (status, a change, a check, protecting a document) and you map it to tools. There are no slash subcommands.
+- Read `references/notebook.md` when authoring or amending the DATUM (drafting, readiness, modes, consent flow, terms, protected references).
+- Read `references/steward.md` for the glance / post-plan check protocol, session bootstrap, and maintenance.
+- Iteration tools are separate skills (`keel-stress-test`, `keel-alternatives`, `keel-relax-probe`, `keel-skeleton`); adopted findings come back through this module's write path.
