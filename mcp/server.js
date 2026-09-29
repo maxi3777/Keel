@@ -1,37 +1,44 @@
 #!/usr/bin/env node
 /*
- * Keel MCP server v2.0.0 — zero-dependency, stdio JSON-RPC (MCP).
+ * Keel MCP server v2.1.0 — zero-dependency, stdio JSON-RPC (MCP).
  *
- * v2 doctrine: Keel is the AI's authoritative NOTEBOOK — it records the
+ * Doctrine: Keel is the AI's authoritative NOTEBOOK — it records the
  * requirements (00), the concept model with weighted principles (01),
  * load-bearing terms (G) and hash-pinned protected documents (R), and keeps
- * them from silently degrading. It no longer directs any workflow: the AI
- * thinks freely, and glances at the notebook after planning, before
+ * them from silently degrading. It does not direct any workflow: the AI
+ * thinks freely and glances at the notebook after planning, before
  * implementing.
  *
  * Modes (state.json):
- *   phase        'draft' (incomplete — all writes apply immediately, logged
- *                as ai-managed) → 'authoritative' (mechanical readiness
- *                check passed; flips automatically on the completing write)
+ *   phase        'draft' (writes apply immediately, logged ai-managed)
+ *                → 'authoritative' (declared by the agent via
+ *                keel_config {authoritative:true} — a semantic judgment, not
+ *                a mechanical check; one-way, never a write side-effect)
  *   consentMode  authoritative + on  → core writes staged until keel_confirm
  *                                     with the user's consenting words
  *                authoritative + off → AI self-manages (still logged)
  *   stewardMode  informational for the agent: on = structured post-plan
  *                check; off = the glance habit alone. Never enforced here.
  *
+ * Numeric gates are deliberately absent from the write path: the only
+ * mechanical requirements are presence checks (a summary, a rationale for
+ * core, consent evidence, an exemption reason) and the line formats the
+ * parser depends on. Quality is governed by the skill's lifespan-clarity
+ * rule, not by counters.
+ *
  * Mechanical duties (never delegated to the model): file creation, DATUM /
- * AMENDMENTS writes with schema validation, append-only amendment log,
+ * AMENDMENTS writes with structural validation, append-only amendment log,
  * digest generation as verbatim slicing, traceability closure over glossary
  * and protected-reference links, reference hashing and verification,
- * consent tiering with staging (when enabled), readiness computation,
- * compaction with archival, health and oscillation reference statistics.
+ * consent tiering with staging (when enabled), compaction with archival,
+ * health and oscillation reference statistics.
  */
 'use strict';
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const VERSION = '2.0.0';
+const VERSION = '2.1.0';
 
 const SECTIONS = [
   { id: '00', key: 'intent',   title: '00 Intent' },
@@ -40,7 +47,14 @@ const SECTIONS = [
   { id: 'R',  key: 'refs',     title: 'R Protected References' },
 ];
 const CORE_REF = /^(P\d|01|00)/; // a traceability reference matching this touches core
-const COMPACT_MIN = 5;           // refuse compaction when the log is shorter than this
+const COMPACT_MIN = 5;           // refuse compaction when the log is shorter than this (maintenance tier)
+const SEP_ROW = /^\|\s*[-: ]+(\|\s*[-: ]+)*\|/; // markdown table separator row
+
+function lastTableRowIndex(lines) {
+  let last = -1;
+  for (let i = 0; i < lines.length; i++) if (lines[i].startsWith('|')) last = i;
+  return last;
+}
 
 function makeKeel(root) {
   const dir = path.join(root, '.keel');
@@ -72,7 +86,7 @@ function makeKeel(root) {
     return {
       created: dir, files: ['DATUM.md', 'AMENDMENTS.md'], phase: 'draft',
       mode: notebook ? 'notebook (consent and steward stay off)' : 'guarded (switches default on at activation)',
-      next: 'Record the goal, out-of-scope and numbered requirements R* in 00, principles in 01, then register the first load-bearing term. While the DATUM is incomplete you write freely.',
+      next: 'Record the essentials in the user\'s own words: goal, out-of-scope and numbered requirements R* in 00, principles and the concept model in 01, load-bearing terms in G. Nothing is gated while draft. When you judge the notebook complete, declare it authoritative via keel_config {authoritative:true}.',
     };
   }
 
@@ -117,8 +131,7 @@ function makeKeel(root) {
     const n = st.seq.amendment; writeState(st);
     const row = `| ${n} | ${new Date().toISOString()} | ${e.level} | ${e.position} | ${e.summary} | ${e.overturns || ''} | ${e.consent} |`;
     const lines = fs.readFileSync(amendmentsPath, 'utf8').split(/\r?\n/);
-    let last = -1;
-    for (let i = 0; i < lines.length; i++) if (lines[i].startsWith('|')) last = i;
+    const last = lastTableRowIndex(lines);
     if (last < 0) lines.push('', '| # | Time | Tier | Location | Summary | Supersedes | Consent |', '|---|---|---|---|---|---|---|', row);
     else lines.splice(last + 1, 0, row);
     fs.writeFileSync(amendmentsPath, lines.join('\n'));
@@ -126,7 +139,7 @@ function makeKeel(root) {
   }
   function parseAmendments() {
     return fs.readFileSync(amendmentsPath, 'utf8').split(/\r?\n/)
-      .filter(l => l.startsWith('|') && !/^\|\s*[-: ]+(\|\s*[-: ]+)*\|/.test(l) && !/^\|\s*#/.test(l))
+      .filter(l => l.startsWith('|') && !SEP_ROW.test(l) && !/^\|\s*#/.test(l))
       .map(l => {
         const c = l.split('|').slice(1, -1).map(s => s.trim());
         return { n: c[0], time: c[1], level: c[2], position: c[3], summary: c[4], overturn: c[5], consent: c[6] };
@@ -135,8 +148,9 @@ function makeKeel(root) {
 
   // ---------- Structured table rows ----------
   function tableRows(sectionBody, firstColName) {
+    const head = new RegExp(`^\\|\\s*${firstColName}\\b`); // \b: "Terminology" is data, not the "Term" header
     return (sectionBody || '').split(/\r?\n/)
-      .filter(l => l.startsWith('|') && !/^\|\s*[-: ]+(\|\s*[-: ]+)*\|/.test(l) && !new RegExp(`^\\|\\s*${firstColName}`).test(l))
+      .filter(l => l.startsWith('|') && !SEP_ROW.test(l) && !head.test(l))
       .map(l => l.split('|').slice(1, -1).map(s => s.trim()));
   }
   function parseGlossaryRows() {
@@ -155,16 +169,14 @@ function makeKeel(root) {
     // Mechanically extract core-touching traceability references from the content about to be written.
     const refs = new Set();
     if (section === 'glossary') {
-      for (const l of content.split(/\r?\n/)) {
-        if (!l.startsWith('|')) continue;
-        const c = l.split('|').slice(1, -1).map(s => s.trim());
-        if (c.length >= 3 && c[0] && !/Term/.test(c[0])) {
+      for (const c of tableRows(String(content), 'Term')) {
+        if (c.length >= 3 && c[0]) {
           for (const r of c[2].split(/[,，;；]/)) if (CORE_REF.test(r.trim())) refs.add(r.trim());
         }
       }
     } else if (section === 'refs') {
       for (const row of tableRows(String(content), 'ref')) {
-        if (!row[0] || /ref/.test(row[0])) continue;
+        if (!row[0]) continue;
         for (const r of (row[2] || '').split(/[,，;；]/)) if (CORE_REF.test(r.trim())) refs.add(r.trim());
       }
     }
@@ -195,42 +207,18 @@ function makeKeel(root) {
     };
   }
 
-  // ---------- Readiness (mechanical; drives draft → authoritative) ----------
+  // ---------- Readiness of individual lines (display filter for digest/counts, never a gate) ----------
   function filled(line) { return line && !line.includes('(TBD)'); }
-  function readyCheck() {
-    const intent = getSection('intent') || '';
-    const checks = [];
-    checks.push({ item: '00 Goal filled', pass: intent.split(/\r?\n/).some(l => /^-\s*Goal \(one sentence\):/.test(l) && filled(l)) });
-    checks.push({ item: '00 Out-of-scope filled', pass: intent.split(/\r?\n/).some(l => /^-\s*Out of scope:/.test(l) && filled(l)) });
-    const reqs = intent.split(/\r?\n/).filter(l => /^- Requirement R\d+:/.test(l) && filled(l));
-    checks.push({ item: '00 ≥1 confirmed requirement', pass: reqs.length >= 1 });
-    const ps = (getSection('concept') || '').split(/\r?\n/).filter(l => /^- P\d+\s*[:：]/.test(l) && filled(l));
-    checks.push({ item: '01 design principles 3–5', pass: ps.length >= 3 && ps.length <= 5 });
-    checks.push({ item: 'G ≥1 active glossary term', pass: parseGlossaryRows().length >= 1 });
-    return { ready: checks.every(c => c.pass), checks };
-  }
-  function maybeActivate() {
-    const st = readState();
-    if (st.phase !== 'draft' || !readyCheck().ready) return null;
-    st.phase = 'authoritative'; writeState(st);
-    return {
-      phase: 'authoritative', consentMode: st.consentMode, stewardMode: st.stewardMode,
-      note: 'DATUM mechanically complete — now authoritative. Announce to the user: consent mechanism and STEWARD are now ' +
-        (st.consentMode || st.stewardMode ? 'active per the switches' : 'switched off (notebook mode)') +
-        '. Flip anytime with keel_config.',
-    };
-  }
 
   // ---------- Writes and consent tiering ----------
   function applyWrite(prop, consent) {
     for (const e of prop.sections) setSection(e.section, e.content);
-    prop.amendmentNo = appendAmendment({
+    appendAmendment({
       level: prop.effLevel, position: prop.position,
       summary: prop.summary, overturns: prop.overturns, consent,
     });
-    return maybeActivate();
   }
-  function propose(args) {
+  function propose(args, opts) {
     requireInit();
     const { sections, section, content, level, summary, rationale = '', overturns = '', position = '' } = args;
     const list = Array.isArray(sections) && sections.length ? sections : [{ section, content }];
@@ -240,6 +228,9 @@ function makeKeel(root) {
       const meta = SECTIONS.find(s => s.key === e.section);
       if (!meta) throw new Error(`Unknown section: ${e.section} (valid: ${SECTIONS.map(s => s.key).join(', ')})`);
       if (e.section === 'amendments') throw new Error('The amendment log is server-owned; direct writes are forbidden.');
+      if (e.section === 'refs' && !(opts && opts.viaRefTool)) {
+        throw new Error('The refs table is managed by keel_ref_add / keel_ref_remove — direct section writes would bypass admission hashing.');
+      }
       if (seen.has(e.section)) throw new Error(`Duplicate section in batch: ${e.section}`);
       seen.add(e.section);
       if (typeof e.content !== 'string' || !e.content.trim()) throw new Error(`content for "${e.section}" must be a non-empty string.`);
@@ -247,7 +238,7 @@ function makeKeel(root) {
         throw new Error(`Section content for "${e.section}" must not contain "## " headings — "##" is reserved for section boundaries and would split the section during parsing. Use "###" or lower inside sections.`);
       }
     }
-    if (!summary || typeof summary !== 'string' || summary.length > 120) throw new Error('summary is required and must be ≤120 characters.');
+    if (!summary || typeof summary !== 'string' || !summary.trim()) throw new Error('summary is required: a one-line description of the change.');
     if (level !== 'core' && level !== 'peripheral') throw new Error('level must be "core" or "peripheral".');
 
     const closure = new Set();
@@ -255,8 +246,8 @@ function makeKeel(root) {
     let effLevel = level;
     if (level === 'peripheral' && closure.size) effLevel = 'core-escalated';
 
-    if (level === 'core' && (!rationale || rationale.length < 8)) {
-      throw new Error('Core-level changes require a rationale (≥8 characters): why it changes and what it affects.');
+    if (level === 'core' && !(rationale && rationale.trim())) {
+      throw new Error('Core-level changes require a rationale: why it changes and what it affects.');
     }
 
     const entries = list.map(e => ({
@@ -281,18 +272,16 @@ function makeKeel(root) {
     const st = readState();
     const consentActive = st.phase === 'authoritative' && st.consentMode;
     if (effLevel === 'peripheral' || !consentActive) {
-      const act = applyWrite(prop, effLevel === 'peripheral' ? 'batch-notified' : 'ai-managed');
-      const r = {
+      applyWrite(prop, effLevel === 'peripheral' ? 'batch-notified' : 'ai-managed');
+      return {
         written: true, level: effLevel, amendment: prop.amendmentNo, sectionsApplied: entries.length,
         note: effLevel === 'peripheral'
           ? 'Peripheral tier: mechanically logged (one row for the whole batch). Batch-notify the user at session end or via keel_status.'
           : (st.phase === 'draft'
-            ? 'Draft phase: the consent mechanism is not active — applied immediately and logged (ai-managed).'
+            ? 'Draft phase: nothing is gated — applied immediately and logged (ai-managed).'
             : 'consent OFF: you self-manage this write — applied immediately and logged (ai-managed).'),
+        bypassedConsent: effLevel !== 'peripheral',
       };
-      if (effLevel !== 'peripheral') r.bypassedConsent = true;
-      if (act) r.activated = act;
-      return r;
     }
     st.seq.proposal += 1;
     prop.id = 'PR' + st.seq.proposal;
@@ -310,7 +299,7 @@ function makeKeel(root) {
     const prop = st.proposals[proposal_id];
     if (!prop) throw new Error(`Proposal not found or already handled: ${proposal_id} (keel_status lists pending proposals).`);
     const ev = (consent_evidence || '').trim();
-    if (ev.length < 2) throw new Error('consent_evidence is required: the user\'s consenting words from the conversation (audit trail).');
+    if (!ev) throw new Error('consent_evidence is required: the user\'s consenting words from the conversation (audit trail).');
     for (const e of prop.sections) {
       if (getSection(e.section) !== e.baseContent) {
         throw new Error(`Section "${e.section}" changed after this proposal was staged (another amendment landed first). Call keel_reject on ${proposal_id} and re-propose against the current content — otherwise the earlier change would be silently clobbered.`);
@@ -330,6 +319,7 @@ function makeKeel(root) {
     return result;
   }
   function reject(args) {
+    requireInit();
     const st = readState();
     if (!st.proposals[args.proposal_id]) throw new Error(`Proposal not found: ${args.proposal_id}`);
     delete st.proposals[args.proposal_id]; writeState(st);
@@ -341,6 +331,7 @@ function makeKeel(root) {
     requireInit();
     const { term, definition, load_bearing = [], aliases = [] } = args;
     if (!term || !definition) throw new Error('term and definition are required.');
+    if (String(term).includes('|') || String(definition).includes('|')) throw new Error('term and definition must not contain "|" — it breaks the table row.');
     const row = `| ${term} | ${definition} | ${load_bearing.join('; ')} | ${aliases.join(', ')} | active |`;
     const body = getSection('glossary') || '';
     const lines = body.split(/\r?\n/);
@@ -350,11 +341,7 @@ function makeKeel(root) {
         lines[i] = row; replaced = true; break;
       }
     }
-    if (!replaced) {
-      let last = -1;
-      for (let i = 0; i < lines.length; i++) if (lines[i].startsWith('|')) last = i;
-      lines.splice(last + 1, 0, row);
-    }
+    if (!replaced) lines.splice(lastTableRowIndex(lines) + 1, 0, row);
     const level = load_bearing.some(r => CORE_REF.test(String(r).trim())) ? 'core' : 'peripheral';
     return propose({
       section: 'glossary', content: lines.join('\n'), level,
@@ -372,22 +359,21 @@ function makeKeel(root) {
     requireInit();
     const { path: rel, carries = [], label = '' } = args;
     if (!rel || !Array.isArray(carries) || !carries.length) throw new Error('path and a non-empty carries array are required.');
+    if (String(rel).includes('|') || carries.some(c => String(c).includes('|'))) throw new Error('path and carries must not contain "|" — it breaks the table row.');
     const abs = path.resolve(root, rel);
     if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) throw new Error(`File not found (relative to project root): ${rel}`);
     const sha = sha256Of(abs);
     const existing = tableRows(getSection('refs') || '', 'ref').length;
-    const id = label || `R${existing + 1}`;
+    const id = label || `REF${existing + 1}`;
     if (parseRefs().some(p => p.ref === id)) throw new Error(`Reference id already in use: ${id}`);
     const row = `| ${id} | ${rel.replace(/\\/g, '/')} | ${carries.join('; ')} | ${sha} | ${new Date().toISOString()} | active |`;
     const lines = (getSection('refs') || '').split(/\r?\n/);
-    let last = -1;
-    for (let i = 0; i < lines.length; i++) if (lines[i].startsWith('|')) last = i;
-    lines.splice(last + 1, 0, row);
+    lines.splice(lastTableRowIndex(lines) + 1, 0, row);
     return propose({
       section: 'refs', content: lines.join('\n'), level: 'core',
       summary: `Protected reference ${id} → ${rel}`, rationale: `Extends the protection boundary; carries: ${carries.join('; ')}`,
       position: 'R Protected References',
-    });
+    }, { viaRefTool: true });
   }
   function refRemove(args) {
     requireInit();
@@ -401,7 +387,7 @@ function makeKeel(root) {
       section: 'refs', content: head.concat(kept).join('\n'), level: 'core',
       summary: `Protected reference ${ref} removed`, rationale: `Protection boundary shrinks; path was ${hit[1]}`,
       position: 'R Protected References',
-    });
+    }, { viaRefTool: true });
   }
   function refsVerify() {
     requireInit();
@@ -409,7 +395,11 @@ function makeKeel(root) {
     for (const p of parseRefs()) {
       const abs = path.resolve(root, p.path);
       if (!fs.existsSync(abs)) out.push({ ref: p.ref, path: p.path, ok: false, reason: 'file missing' });
-      else out.push({ ref: p.ref, path: p.path, ok: sha256Of(abs) === p.sha, reason: sha256Of(abs) === p.sha ? null : 'content diverged from admitted hash' });
+      else {
+        const sha = sha256Of(abs);
+        const ok = sha === p.sha;
+        out.push({ ref: p.ref, path: p.path, ok, reason: ok ? null : 'content diverged from admitted hash' });
+      }
     }
     return { refs: out, mismatches: out.filter(o => !o.ok).length, note: 'Tamper-evidence only: mismatches are reported, never blocked. Regenerate or re-admit after intentional changes.' };
   }
@@ -464,9 +454,9 @@ function makeKeel(root) {
   function exempt(args) {
     requireInit();
     const { summary, reason } = args;
-    if (!summary || !reason || reason.length < 4) throw new Error('Explicit exemptions require both summary and reason (≥4 characters).');
+    if (!summary || !(reason && String(reason).trim())) throw new Error('Explicit exemptions require both a summary and a reason.');
     const n = appendAmendment({ level: 'exemption', position: '(exemption)', summary: `${summary} — reason: ${reason}`, consent: 'exempted' });
-    return { amendment: n, note: 'Exemption recorded: this change conflicts with DATUM but was explicitly waved through by the user.' };
+    return { amendment: n, note: 'Exemption recorded: this change conflicts with DATUM but was explicitly approved by the user despite the conflict.' };
   }
   function health() {
     requireInit();
@@ -496,18 +486,30 @@ function makeKeel(root) {
     const st = readState();
     if (typeof args.consent === 'boolean') st.consentMode = args.consent;
     if (typeof args.steward === 'boolean') st.stewardMode = args.steward;
+    let activated = null;
+    if (args.authoritative === true && st.phase === 'draft') {
+      st.phase = 'authoritative'; // one-way; never a side-effect of a write
+      activated = {
+        phase: 'authoritative', consentMode: st.consentMode, stewardMode: st.stewardMode,
+        note: 'DATUM declared authoritative — announce to the user: the consent mechanism and the structured post-plan check (STEWARD) are now ' +
+          (st.consentMode || st.stewardMode ? 'active per the switches' : 'switched off (notebook mode)') +
+          '. Flip anytime with keel_config.',
+      };
+    }
     writeState(st);
-    return {
+    const r = {
       phase: st.phase, consentMode: st.consentMode, stewardMode: st.stewardMode,
       effective: { consent: st.phase === 'authoritative' && st.consentMode, steward: st.phase === 'authoritative' && st.stewardMode },
       note: 'Switches take effect while the DATUM is authoritative. No re-validation is required to flip either way — the user decides.',
     };
+    if (activated) r.activated = activated;
+    return r;
   }
   function digestText() {
     requireInit();
     const st = readState();
     const mode = st.phase === 'draft'
-      ? 'phase=draft (incomplete — consent mechanism and STEWARD inactive; write freely)'
+      ? 'phase=draft (not yet declared authoritative — consent and steward inactive; write freely; declare via keel_config {authoritative:true})'
       : `phase=authoritative · consent=${st.consentMode ? 'on' : 'off'} · steward=${st.stewardMode ? 'on' : 'off'}`;
     const L = [
       '[Keel] Authoritative design notebook: .keel/DATUM.md (project root). Live state is in the file; read via keel_read / keel_digest, write only via keel_* tools (MCP server "keel"). Below is a verbatim snapshot.',
@@ -535,7 +537,6 @@ function makeKeel(root) {
       phase: st.phase,
       modes: { consent: st.consentMode, steward: st.stewardMode },
       effective: { consent: st.phase === 'authoritative' && st.consentMode, steward: st.phase === 'authoritative' && st.stewardMode },
-      ready: readyCheck(),
       counts: {
         requirements: (getSection('intent') || '').split(/\r?\n/).filter(l => /^- Requirement R\d+:/.test(l) && filled(l)).length,
         principles: (getSection('concept') || '').split(/\r?\n/).filter(l => /^- P\d+\s*[:：]/.test(l) && filled(l)).length,
@@ -552,42 +553,42 @@ function makeKeel(root) {
   return {
     exists, init, propose, confirm, reject, ripple, glossaryRegister,
     refAdd, refRemove, refsVerify, cleanOrphans,
-    compact, exempt, health, config, digestText, status, readyCheck,
+    compact, exempt, health, config, digestText, status,
     getSection,
   };
 }
 
 // ---------- MCP tool table ----------
 const TOOLS = [
-  { name: 'keel_init', description: 'Create .keel/ in the current project (DATUM.md guarded notebook + AMENDMENTS.md log + state.json + archive/). notebook:true builds a pure-notebook project (consent and steward stay off). Starts in draft phase: all writes apply immediately.',
+  { name: 'keel_init', description: 'Create .keel/ in the current project (DATUM.md guarded notebook + AMENDMENTS.md log + state.json + archive/). project = display name in the DATUM title; notebook:true builds a pure-notebook project (consent and steward stay off). Starts in draft phase: all writes apply immediately.',
     inputSchema: { type: 'object', properties: { project: { type: 'string' }, notebook: { type: 'boolean' } }, required: ['project'] } },
   { name: 'keel_digest', description: 'Mechanical excerpt (verbatim slicing, not AI paraphrase): doc pointer, mode line (phase + switches), goal/out-of-scope/requirements/P*, top terms/protected refs, recent amendments, glance reminder.',
     inputSchema: { type: 'object', properties: {} } },
-  { name: 'keel_status', description: 'Phase, mode switches (configured + effective), readiness checks, counts, pending proposals, health summary (incl. the oscillation reference metric).',
+  { name: 'keel_status', description: 'Phase, mode switches (configured + effective), section counts, pending proposals, health summary (incl. the oscillation reference metric).',
     inputSchema: { type: 'object', properties: {} } },
   { name: 'keel_read', description: 'Read one section verbatim: intent / glossary / concept / refs.',
     inputSchema: { type: 'object', properties: { section: { type: 'string', enum: ['intent', 'glossary', 'concept', 'refs'] } }, required: ['section'] } },
   { name: 'keel_ripple', description: 'Traceability closure: given P* ids or glossary terms, mechanically compute the core references touched and the protected references now suspected stale.',
     inputSchema: { type: 'object', properties: { targets: { type: 'array', items: { type: 'string' } } }, required: ['targets'] } },
-  { name: 'keel_write_section', description: 'Write DATUM sections. Pass section+content for a single write, or sections:[{section, content}] to batch one logical change — one amendment row (and one consent, when active) covers the whole batch. Core tier is staged pending consent while the document is authoritative and consent is ON; otherwise everything applies immediately and is logged (ai-managed). Peripheral writes whose traceability closure touches core are auto-escalated.',
+  { name: 'keel_write_section', description: 'Write DATUM sections. content replaces the ENTIRE section — keel_read it first and merge your change in. Pass section+content for a single write, or sections:[{section, content}] to batch one logical change — one amendment row (and one consent, when active) covers the whole batch. Core tier is staged pending consent while the document is authoritative and consent is ON; otherwise everything applies immediately and is logged (ai-managed). Peripheral writes whose traceability closure touches core are auto-escalated. The refs table is not writable here — use keel_ref_add / keel_ref_remove.',
     inputSchema: { type: 'object', properties: {
       section: { type: 'string', enum: ['intent', 'glossary', 'concept', 'refs'] },
       content: { type: 'string' },
       sections: { type: 'array', description: 'batch form: [{section, content}, …] for one logical change across sections', items: { type: 'object', properties: { section: { type: 'string' }, content: { type: 'string' } }, required: ['section', 'content'] } },
       level: { type: 'string', enum: ['core', 'peripheral'] },
-      summary: { type: 'string', description: '≤120 characters' }, rationale: { type: 'string' },
-      overturns: { type: 'string', description: 'Entries this supersedes, e.g. a prior principle (feeds the oscillation reference metric)' }, position: { type: 'string' },
+      summary: { type: 'string', description: 'one-line description of the change' }, rationale: { type: 'string' },
+      overturns: { type: 'string', description: 'Entries this supersedes, e.g. a prior principle (feeds the oscillation reference metric)' }, position: { type: 'string', description: 'location label for the amendment row (defaults to the section titles)' },
     }, required: ['level', 'summary'] } },
   { name: 'keel_confirm', description: 'Apply a staged core-tier proposal after the user explicitly consented in the conversation. consent_evidence = the user\'s consenting words (audit trail). Returns staleRefs when protected documents are now suspected outdated.',
     inputSchema: { type: 'object', properties: { proposal_id: { type: 'string' }, consent_evidence: { type: 'string' } }, required: ['proposal_id', 'consent_evidence'] } },
   { name: 'keel_reject', description: 'Discard a staged proposal.',
     inputSchema: { type: 'object', properties: { proposal_id: { type: 'string' } }, required: ['proposal_id'] } },
-  { name: 'keel_config', description: 'Flip the two switches: consent (core-write consent mechanism) and steward (structured post-plan check). Both default ON when the DATUM becomes authoritative; notebook projects start with both OFF. No re-validation is required to flip — the user decides.',
-    inputSchema: { type: 'object', properties: { consent: { type: 'boolean' }, steward: { type: 'boolean' } } } },
+  { name: 'keel_config', description: 'The switchboard: flip consent (core-write consent mechanism) and steward (structured post-plan check), and/or declare the DATUM authoritative (authoritative:true — one-way; the judgment is the agent\'s: activate when the essentials are recorded in language that survives the session). Switches default ON at activation; notebook projects start with both OFF. No re-validation is required to flip — the user decides.',
+    inputSchema: { type: 'object', properties: { consent: { type: 'boolean' }, steward: { type: 'boolean' }, authoritative: { type: 'boolean' } } } },
   { name: 'keel_glossary_register', description: 'Register/update a term. The AI fills the semantic fields, the server persists the row; terms load-bearing at P*/01/00 are core-tier (staged while consent is active).',
     inputSchema: { type: 'object', properties: { term: { type: 'string' }, definition: { type: 'string' }, load_bearing: { type: 'array', items: { type: 'string' } }, aliases: { type: 'array', items: { type: 'string' } } }, required: ['term', 'definition'] } },
-  { name: 'keel_ref_add', description: 'Admit a derived document into the anti-degradation scope (protected reference). Records whole-file SHA-256 at admission; carries = the core claims (P*/01/00 refs) it renders. Core-tier while consent is active (extends the protection boundary).',
-    inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'relative to project root' }, carries: { type: 'array', items: { type: 'string' } }, label: { type: 'string' } }, required: ['path', 'carries'] } },
+  { name: 'keel_ref_add', description: 'Admit a derived document into the anti-degradation scope (protected reference). Records whole-file SHA-256 at admission; carries = the core claims (P*/01/00 refs) this document renders. Core-tier while consent is active (extends the protection boundary).',
+    inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'relative to project root' }, carries: { type: 'array', items: { type: 'string' }, description: 'the core claims (P*/01/00 refs) this document renders' }, label: { type: 'string', description: 'custom reference id (default REF<n>)' } }, required: ['path', 'carries'] } },
   { name: 'keel_ref_remove', description: 'Remove a protected reference (shrinks the protection boundary; core-tier while consent is active). The document itself is untouched.',
     inputSchema: { type: 'object', properties: { ref: { type: 'string' } }, required: ['ref'] } },
   { name: 'keel_refs_verify', description: 'Re-hash every active protected reference and report matches/mismatches. Tamper-evidence only — never blocks; regenerate or re-admit after intentional changes.',
@@ -596,10 +597,8 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: {} } },
   { name: 'keel_compact', description: 'Compact the amendment log: the AI provides merged summary entries, the server archives the raw log verbatim (never deleted). Refuses below 5 entries.',
     inputSchema: { type: 'object', properties: { entries: { type: 'array', items: { type: 'object', properties: { position: { type: 'string' }, summary: { type: 'string' } }, required: ['position', 'summary'] } } }, required: ['entries'] } },
-  { name: 'keel_exempt', description: 'Explicit waiver: a change conflicts with DATUM but the user waves it through; recorded for audit.',
+  { name: 'keel_exempt', description: 'Explicit waiver: a change conflicts with DATUM but the user approves it despite the conflict; recorded for audit.',
     inputSchema: { type: 'object', properties: { summary: { type: 'string' }, reason: { type: 'string' } }, required: ['summary', 'reason'] } },
-  { name: 'keel_health', description: 'Health summary: core-amendment counts (epoch since last compaction + lifetime), oscillation reference metric (never a threshold), pending proposals.',
-    inputSchema: { type: 'object', properties: {} } },
 ];
 
 function startStdio() {
@@ -608,7 +607,10 @@ function startStdio() {
     keel_init: a => keel.init(a.project, a.notebook),
     keel_digest: () => keel.digestText(),
     keel_status: () => keel.status(),
-    keel_read: a => (keel.getSection(a.section) || '(empty)'),
+    keel_read: a => {
+      if (!keel.exists()) throw new Error('No .keel/DATUM.md in the current directory. Run keel_init first.');
+      return keel.getSection(a.section) || '(empty)';
+    },
     keel_ripple: a => keel.ripple(a.targets),
     keel_write_section: a => keel.propose(a),
     keel_confirm: a => keel.confirm(a),
@@ -621,8 +623,11 @@ function startStdio() {
     keel_clean: () => keel.cleanOrphans(),
     keel_compact: a => keel.compact(a),
     keel_exempt: a => keel.exempt(a),
-    keel_health: () => keel.health(),
   };
+  // TOOLS and IMPL are maintained separately; a mismatch would silently break a tool at call time.
+  for (const t of TOOLS) if (!IMPL[t.name]) throw new Error(`startStdio: IMPL missing for tool ${t.name}`);
+  for (const n of Object.keys(IMPL)) if (!TOOLS.some(t => t.name === n)) throw new Error(`startStdio: TOOLS missing entry for ${n}`);
+
   let buf = '';
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', d => {

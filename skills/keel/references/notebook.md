@@ -2,24 +2,26 @@
 
 ## Drafting (phase = draft)
 
-- Write freely: core-level writes apply immediately and are logged `ai-managed`. No consent is requested; the consent mechanism and STEWARD are inactive by design.
-- Record in the user's own words wherever possible:
-  - **00 Intent** — goal (one sentence), success criteria, out of scope, numbered requirements `R*`. Requirements that originate from the user are confirmed with them; gaps you discover are raised as proposals.
-  - **01 Concept** — principles as `- P1: …` lines (3–5, weighted priorities — this exact line format is mechanically load-bearing), the concept model under them (entities / flows / invariants, everyday words, no class names), and technical details that surface along the way into the parking lot.
-  - Terms: register load-bearing words via `keel_glossary_register` the same turn they first appear.
-- **Readiness** is computed mechanically by the server: goal filled · out-of-scope filled · ≥1 requirement · principles 3–5 · ≥1 glossary term. When it first passes, the DATUM becomes authoritative, both switches default ON, and the write result carries `activated` — **tell the user at that moment** (what turned on, and that `keel_config` can flip either off).
+- Write freely: writes apply immediately and are logged `ai-managed`. No consent is requested; the consent mechanism and the steward switch are inactive by design — the glance habit still applies (see references/steward.md).
+- Start with `keel_init {project}` if `.keel` does not exist.
+- Record in the user's own words wherever possible, and for the whole lifecycle (iron rule 2 of the skill):
+  - **00 Intent** — goal (one sentence), success criteria, out of scope, numbered requirements `R1..Rn`. Requirements that originate from the user are confirmed with them; gaps you discover are raised as proposals.
+  - **01 Concept** — principles as `- P1: …` lines (typically 3–5; priority = list order, P1 highest — this exact line format is mechanically load-bearing), the concept model under them (entities / flows / invariants, everyday words, no class names), key assumptions tagged inline `[assumption]`, and technical details that surface along the way into the parking lot (the `### Parking lot` subsection of 01).
+  - Terms: register load-bearing words via `keel_glossary_register` the same turn they first appear. To retire a term, rewrite its glossary row with status `archived` (a core-tier write while consent is on, if the term is load-bearing).
+- Draft writes are ungated but not unlogged: `keel_write_section` still takes `level`, a one-line `summary`, and — for core — a `rationale`. And `content` always replaces the **entire** section: `keel_read` it first and merge your change in.
+- **Activation is your declaration, not a mechanical check**: when the essentials are recorded in language that survives the session (iron rule 2 again), call `keel_config {authoritative:true}`. It is one-way; both switches take effect, default ON — **tell the user at that moment** (what turned on, and that `keel_config` can flip either off). If any line still needs this conversation to be readable, finish it before activating. (A `notebook:true` project activates the same way; its switches simply stay off.)
 
 ## Authoritative phase
 
 - **consent ON (default)**: core-tier writes (00/01 content, load-bearing terms, protected references) are staged until `keel_confirm` with `consent_evidence` = the user's consenting words. Peripheral writes (parking-lot notes and other non-core content) apply immediately and are batch-notified at session end or via `keel_status`.
-- **Consent economy**: a user message that specifies a change verbatim counts as consent only when its ripple closure is empty — compute the closure first (`keel_ripple` / the staged result's `closure`); if non-empty, stop and show the ripple.
-- **consent OFF** (`keel_config {consent:false}`): all writes apply immediately, logged `ai-managed`. You are trusted; the audit trail still records everything. Batch-notify as with peripheral writes.
-- **Batches**: one logical change across sections = one call with `sections:[{section,content},…]` — one amendment row, and one consent when active. Never split a logical change into sequential writes.
+- **Consent economy**: stage the change first (`keel_write_section`). If the staged result's `closure` is empty and the user's message already specified the change verbatim, that message may serve as `consent_evidence` — you may `keel_confirm` immediately, no further user round. If the closure is non-empty, stop: show the ripple (affected core refs, stale refs) and get fresh consent. Note that admitting a protected reference always carries core refs, so its closure is non-empty by construction — even a verbatim "protect this file" gets one ripple-and-consent round; that is deliberate, the protection boundary itself is changing.
+- **consent OFF** (`keel_config {consent:false}`): all writes apply immediately, logged `ai-managed`. You are trusted; the audit trail still records everything. Batch-notify as with peripheral writes. Pending proposals survive the flip — confirm or `keel_reject` them as usual.
+- **Batches**: one logical change across sections = one `keel_write_section` call with `sections:[{section, content},…]` — one amendment row, and one consent when active. Never split a logical change into sequential writes.
 - Staged proposals must never be abandoned silently — confirm or `keel_reject` them; `keel_status` lists pending ones.
 - **Amendments superseding earlier ones** fill `overturns` (feeds the oscillation reference metric).
 
 ## Protected references (R)
 
-- `keel_ref_add {path, carries}` admits a derived document into the anti-degradation scope (whole-file SHA-256 pinned at admission; carries = the P*/01/00 refs it renders). `keel_ref_remove` retires one. `keel_refs_verify` re-hashes — report, never block; after intentional regeneration, re-admit (remove + add) with the user.
+- `keel_ref_add {path, carries}` admits a derived document into the protected set (whole-file SHA-256 pinned at admission; carries = which core claims — P*/01/00 — it renders). `keel_ref_remove` retires one. `keel_refs_verify` re-hashes — report, never block; after intentional regeneration, re-admit (remove + add) with the user. The refs table itself is server-managed: `keel_write_section` refuses direct writes to it.
 - When a core amendment lands, `keel_confirm` returns `staleRefs` — relay the list to the user; the owning workflow regenerates the document. Keel detects, it never regenerates (it does not know the derivation function).
-- With consent OFF these too apply immediately (`ai-managed`) — the boundary moves at the user's trust level.
+- With consent OFF these too apply immediately (`ai-managed`).

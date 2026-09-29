@@ -8,8 +8,8 @@
     {
       "name": "keel",
       "source": "./",
-      "description": "Co-created concept design with an authoritative DATUM design document and cross-session design stewardship.",
-      "version": "2.0.0",
+      "description": "The AI's authoritative notebook: a guarded DATUM of requirements and concept model, consent-tiered amendments, and the glance habit against cross-session drift.",
+      "version": "2.1.0",
       "skills": ["./skills/keel"]
     }
   ]

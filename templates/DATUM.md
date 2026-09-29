@@ -6,9 +6,10 @@
      This is the project's authoritative notebook: requirements (00) and the
      concept model (01), plus load-bearing terms (G) and hash-pinned
      protected documents (R). History lives in AMENDMENTS.md (append-only).
-     Modes: draft (incomplete — writes apply immediately, logged ai-managed)
-     → authoritative (readiness check passed; consent + steward switches
-     effective, both default on). Flip switches via keel_config. -->
+     Modes: draft (writes apply immediately, logged ai-managed) →
+     authoritative (declared by the agent via keel_config {authoritative:true}
+     when the essentials are recorded; consent + steward switches then take
+     effect, both default on). Flip switches via keel_config. -->
 
 ## 00 Intent
 

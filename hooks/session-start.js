@@ -8,21 +8,35 @@
  * Output contract: strict hook JSON {"hookSpecificOutput":{...}} or nothing.
  * Hosts parse stdout against a strict schema — plain text is discarded and the
  * run marked failed — so the digest must never be printed bare.
+ *
+ * stdin is drained (with a timer guard for hosts that never close it) so the
+ * host's write side never sees a broken pipe.
  */
 'use strict';
 const path = require('path');
 const { makeKeel } = require(path.join(__dirname, '..', 'mcp', 'server.js'));
 
-try {
-  const keel = makeKeel(process.cwd());
-  if (keel.exists()) {
-    const text = keel.digestText();
-    if (text) {
-      console.log(JSON.stringify({
-        hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: text },
-      }));
+let input = '';
+let done = false;
+const timer = setTimeout(run, 1000); // guard: hosts that never close stdin
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', d => { input += d; });
+process.stdin.on('end', () => { clearTimeout(timer); run(); });
+
+function run() {
+  if (done) return;
+  done = true;
+  try {
+    const keel = makeKeel(process.cwd());
+    if (keel.exists()) {
+      const text = keel.digestText();
+      if (text) {
+        console.log(JSON.stringify({
+          hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: text },
+        }));
+      }
     }
+  } catch (_) {
+    // A failed digest must never block the session; keel_digest can re-fetch it.
   }
-} catch (_) {
-  // A failed digest must never block the session; keel_digest can re-fetch it.
 }

@@ -2,7 +2,7 @@
 
 > **一句话。** Keel 是 AI 的权威笔记本：一份只能经服务器写入的需求+概念模型记录（DATUM），防止跨会话的主题遗忘与静默漂移；AI 自由思考、自由计划，只在实施前"看一眼"。
 
-**文档契约。** 本文件是 Keel 的*心智模型*：开发者视角的全流程图景。它是派生文档——真源是代码（`mcp/server.js`、`skills/`、`hooks/`）与 `docs/PROTOCOL.md`；若本文件与它们冲突，**代码赢，本文件修**。更新只许加深，不得静默推翻早先断言；改写的断言就地修改并记入文末变更表。对应 **Keel v2.0.0**（v1 的流程图见 git 历史，commit 277fb09）。
+**文档契约。** 本文件是 Keel 的*心智模型*：开发者视角的全流程图景。它是派生文档——真源是代码（`mcp/server.js`、`skills/`、`hooks/`）与 `docs/PROTOCOL.md`；若本文件与它们冲突，**代码赢，本文件修**。更新只许加深，不得静默推翻早先断言；改写的断言就地修改并记入文末变更表。对应 **Keel v2.1.0**（v1 的流程图见 git 历史，commit 277fb09）。
 
 ---
 
@@ -48,7 +48,7 @@ flowchart LR
 flowchart TD
     DORM["无 .keel —— 插件休眠"]:::mech
     START["开发者发起 / 提到 Keel"]:::human
-    M1["① 起草与激活<br/>draft 自由写 · 就绪检查 · 激活宣告"]:::mod
+    M1["① 起草与激活<br/>draft 自由写 · 全生命周期清晰 · 声明激活"]:::mod
     M2["② 写入路径与同意机制<br/>分层 · 暂存 · 防覆盖 · 审计行 · 开关"]:::mod
     WORK["AI 自由思考并做出计划<br/>（Keel 零干预）"]:::ai
     M3["③ 看一眼与计划后检查<br/>冲突三选 · 异议提案 · 会话自举"]:::mod
@@ -59,7 +59,7 @@ flowchart TD
     M6["⑥ 迭代子技能（主模块之外）<br/>压力测试 · 备选 · 松弛探针 · 骨架测试"]:::mod
 
     DORM --> START --> M1
-    M1 -->|"就绪通过 → authoritative<br/>（两开关默认开，宣告用户）"| WORK
+    M1 -->|"AI 声明（keel_config，单向）→ authoritative<br/>（两开关默认开，宣告用户）"| WORK
     M1 <-->|"draft 期写入直接落盘（ai-managed）"| M2
     WORK -->|"计划完成"| M3
     M3 -->|"无冲突"| IMPL
@@ -83,28 +83,31 @@ v2 与 v1 的本质差别浓缩在总图形状里：v1 是一条流水线（概�
 
 ```mermaid
 flowchart TD
-    subgraph D["draft 阶段（未完整）"]
+    subgraph D["draft 阶段（未声明）"]
     INIT["keel_init —— 可选 notebook:true<br/>（两开关永久关，直到用户改）"]:::mech
-    FREE["AI 自由写入 00/01/G：<br/>需求 R* · 原则 P1–P5（- P1: 行格式，机械承重）·<br/>概念模型 · 术语（同回合注册）"]:::ai
-    LOGD["每笔立即落盘 · 审计行 ai-managed"]:::mech
+    FREE["AI 自由写入 00/01/G：<br/>需求 R* · 原则 P1..Pn（- P1: 行格式，机械承重）·<br/>概念模型（假设行内标 [assumption]）· 术语（同回合注册）"]:::ai
+    CLEAR["全生命周期清晰度（铁律）：每行脱离当前对话<br/>仍可读懂——无私造缩写、无上下文依赖的速记"]:::ai
+    LOGD["每笔立即落盘 · 审计行 ai-managed<br/>（仅存在性必填：summary / 核心需 rationale）"]:::mech
     CONF["需求源自用户时逐条确认"]:::human
     end
-    READY["就绪检查（机械，从内容计算）：<br/>目标已填 · 范围外已填 · ≥1 需求 · 原则 3–5 · ≥1 术语"]:::mech
-    ACT["补齐就绪的那次写入触发激活：<br/>phase → authoritative，两开关默认开"]:::mech
+    JUDGE["AI 语义判断：该记的都记了，<br/>且语言在整个项目生命周期内清晰"]:::ai
+    DECLARE["keel_config authoritative:true ——<br/>显式声明（单向）；激活从不作为写入的副作用发生"]:::ai
+    ACT["phase → authoritative，两开关默认开"]:::mech
     TELL["agent 向用户宣告：<br/>'同意机制与 STEWARD 已开启，想关说一声'"]:::ai
     SW["keel_config consent/steward ——<br/>随时翻转，双向免验证，用户决定"]:::human
 
     INIT --> FREE --> LOGD
     CONF --> FREE
-    FREE --> READY
-    READY -->|"通过"| ACT --> TELL
+    FREE --> CLEAR
+    CLEAR --> JUDGE
+    JUDGE --> DECLARE --> ACT --> TELL
     TELL --> SW
     classDef human fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
     classDef ai fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
     classDef mech fill:#eceff1,stroke:#546e7a,color:#37474f
 ```
 
-注意：激活是**机械事实**（内容补齐），不是仪式（v1 的 G1 签收门禁已删除）；notebook 项目的激活照常发生，只是开关保持关。
+注意：激活是 **AI 的语义判断 + 一次显式、可归因的声明**（v2.1 起数值就绪检查已删除）；误激活的代价封顶——激活所开启的一切本来就各自可关。notebook 项目的声明照常发生，只是开关保持关。
 
 ---
 
@@ -114,26 +117,25 @@ flowchart TD
 flowchart TD
     WANT["AI 想修改 DATUM 内容"]:::ai
     CALL["keel_write_section —— 单段或批量 sections"]:::ai
-    VAL["机械校验：段落合法 · 禁写 amendments ·<br/>批内无重复 · 内容非空 · 段内禁 '## ' ·<br/>summary ≤120 · 核心需 rationale ≥8"]:::mech
+    VAL["机械校验：段落合法 · 禁写 amendments 与 refs 表<br/>（refs 只走 ref_add/remove，保哈希完整）·<br/>批内无重复 · 内容非空 · 段内禁 '## ' ·<br/>summary 非空 · 核心需 rationale（存在性必填，无长度门槛）"]:::mech
     CLOS["closure 扫描：术语 load-bearing 列 · 引用 carries 列<br/>匹配 /^(P\\d|01|00)/ 即触核心"]:::mech
     ESC{"声明 peripheral<br/>但 closure 非空？"}:::mech
     GATE{"authoritative 且<br/>consent 开？"}:::mech
     STAGE["暂存 PR-n：完整内容 + 各段 baseContent 快照"]:::mech
     SHOW["向用户展示理由 + 波及，请求明确同意"]:::ai
     TYPE["用户输入同意原话"]:::human
-    CONFIRM["keel_confirm（evidence ≥2 字符）"]:::ai
+    CONFIRM["keel_confirm（evidence 非空——用户的同意原话）"]:::ai
     CLOB{"暂存后底层段落已变？"}:::mech
     CLOBERR["拒绝——错误信息指引 reject + 按当前内容重提"]:::mech
     APPLY2["落盘 · 审计行（consent = yes + 原话前 40 字）"]:::mech
     LIFT["层级含 core → 终身计数 +1"]:::mech
     STALE["计算 staleRefs（对照落盘前引用快照）→ 返回 AI 转达"]:::mech
     APPLY["立即落盘 · 审计行<br/>（peripheral=batch-notified / 核心=ai-managed）"]:::mech
-    ACT2["若本次写入补齐就绪 → 激活并附带宣告指令"]:::mech
 
     WANT --> CALL --> VAL --> CLOS --> ESC
     ESC -->|"是 → core-escalated"| GATE
     ESC -->|"否"| GATE
-    GATE -->|"否（draft 或 consent 关）"| APPLY --> ACT2
+    GATE -->|"否（draft 或 consent 关）"| APPLY
     GATE -->|"是"| STAGE --> SHOW --> TYPE --> CONFIRM --> CLOB
     CLOB -->|"是"| CLOBERR
     CLOB -->|"否"| APPLY2 --> LIFT --> STALE
@@ -142,7 +144,7 @@ flowchart TD
     classDef mech fill:#eceff1,stroke:#546e7a,color:#37474f
 ```
 
-要点：批量 = 一次逻辑变更一次同意一行审计；同意经济（协议级）——用户逐字指定改动且 closure 为空时原话可作证据；术语与保护引用走同一机制（`keel_glossary_register` 自算层级；ref 增删恒核心层——同意开启时）。
+要点：批量 = 一次逻辑变更一次同意一行审计；同意经济（协议级）——先暂存，closure 为空且用户逐字指定改动时，原话可直接作 confirm 证据（立即确认，无需再问）；术语与保护引用走同一机制（`keel_glossary_register` 自算层级；ref 增删恒核心层——同意开启时，且其 closure 恒非空=carries 本身，逐字指令也走一轮波及+同意）。写入路径中**不再有任何数值门禁，也不再触发激活**（激活只经分图①的显式声明）。
 
 ---
 
@@ -158,7 +160,7 @@ flowchart TD
     OK["无冲突 → 实施"]:::ai
     OPT["冲突 → 三选项：修正（走②）/ 放弃 / keel_exempt（理由必填）"]:::human
     DIS["对 DATUM 有异议 → 提出修正案（附理由）——<br/>笔记本是权威的，不是神圣的"]:::ai
-    STRUCT["steward 开时升级为结构化检查：<br/>枚举触及面 · keel_ripple · staleRefs 转达 ·<br/>新需求先对照 00 · 张力升级给用户（三出口）"]:::ai
+    STRUCT["steward 开时升级为结构化检查：<br/>五项全对照后深入触及的 P*/需求 · keel_ripple ·<br/>staleRefs 转达 · 新需求先对照 00 · 张力升级（三出口）"]:::ai
 
     SESS --> HOOK
     SESS -->|"无 hook"| FALL
@@ -206,8 +208,8 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    STATUS["keel_status —— 阶段 · 开关（配置+生效）·<br/>就绪 · 计数 · 待定提案 · 批量告知 · 旧版文件提示"]:::mech
-    HEALTH["keel_health —— 双时钟核心修正计数：<br/>纪元（上次压缩以来，黄旗>6 并标注依据）+<br/>终身（state.coreCount，压缩不清零）"]:::mech
+    STATUS["keel_status —— 阶段 · 开关（配置+生效）·<br/>计数 · 待定提案 · 批量告知 · 健康度 · 旧版文件提示"]:::mech
+    HEALTH["健康度（经 keel_status 输出）——<br/>双时钟核心修正计数：纪元（上次压缩以来，<br/>黄旗>6 并标注依据）+ 终身（state.coreCount，压缩不清零）"]:::mech
     OSC["振荡（同位置 ≥2 次 overturns）——<br/>仅参考，永不阈值、永不做门禁"]:::mech
     CLEAN["keel_clean —— 清孤儿 '## ' 块<br/>（含 v1 遗留 02/03 段头；只记标题不记正文）"]:::mech
     COMPACT["keel_compact —— <5 条拒绝；<br/>AI 出合并摘要，原始日志逐字归档永不删除"]:::mech
@@ -255,12 +257,13 @@ flowchart TD
 
 ## 8. Mermaid 装不下的常量与规则
 
-- **分层边界正则**：`/^(P\d|01|00)/`。数值：consent 证据 ≥2 字符（审计行引前 40）· 核心 rationale ≥8 字符 · summary ≤120 字符 · 豁免理由 ≥4 字符 · <5 条拒绝压缩 · digest 切片：前 6 术语、前 6 引用、最近 3 条修正 · 纪元核心修正 >6 亮黄旗。
-- **17 个工具**：init · digest · status · read · ripple · write_section · confirm · reject · config · glossary_register · ref_add · ref_remove · refs_verify · clean · compact · exempt · health。
+- **分层边界正则**：`/^(P\d|01|00)/`。**数值写入门禁：无**（v2.1 全部移除）——仅存在性必填：summary · 核心 rationale · consent 证据 · 豁免理由（审计行引前 40 字）。维护层的两个数字：<5 条拒绝压缩；纪元核心修正 >6 亮黄旗（纯提示文本，不拦截）。digest 切片：前 6 术语、前 6 引用、最近 3 条修正。
+- **16 个工具**：init · digest · status · read · ripple · write_section · confirm · reject · config（含 authoritative 声明）· glossary_register · ref_add · ref_remove · refs_verify · clean · compact · exempt（health 已并入 status）。
+- **保护引用默认 id**：`REF1..`（v2.0 建立的旧 id `R*` 照常识别——id 本身自由形式）。
 - **谁能动什么**：开发者——只在对话里说同意原话；AI——只调 `keel_*`；服务器——`.keel/` 唯一写入者。
-- **宿主面事实**：插件 MCP = `<pluginRoot>/.mcp.json`（`plugin:keel:keel`）；hook stdout 必须严格 JSON；插件路径锚 `${CLAUDE_PLUGIN_ROOT}`；发布门禁 = hostcompat + smoke（43 项）。
-- **失败模式出口**：暂存遗弃 → status 可见 + reject · 孤儿块 → clean · 引用漂移 → verify 报告 + 再生重纳 · state.json 损坏 → 保守默认（draft），AMENDMENTS.md 是持久历史。
-- **迁移**：v1 phase 自动映射（concept→draft，tech/handoff→authoritative）；TECHNICAL.md 与 02/03 段成为不受保护内容。
+- **宿主面事实**：插件 MCP = `<pluginRoot>/.mcp.json`（`plugin:keel:keel`）；hook stdout 必须严格 JSON；插件路径锚 `${CLAUDE_PLUGIN_ROOT}`；发布门禁 = hostcompat + smoke。
+- **失败模式出口**：暂存遗弃 → status 可见 + reject · 孤儿块 → clean · 引用漂移 → verify 报告 + 再生重纳 · state.json 损坏 → 保守默认（draft），AMENDMENTS.md 是持久历史 · 过早声明激活 → 最多多几轮同意回合，开关随时可关。
+- **迁移**：v1 phase 自动映射（concept→draft，tech/handoff→authoritative）；TECHNICAL.md 与 02/03 段成为不受保护内容；v2.0 的 draft 项目改经声明激活。
 
 ---
 
@@ -271,3 +274,4 @@ flowchart TD
 | 1 | 2026-09-23 | 初版（英文），对应 Keel v1.2.2，计划登记 P1–P6。 |
 | 2 | 2026-09-24 | 重构为总-分图（紫节点）、去黄橙底色、新增粗边框规则、中文化。 |
 | 3 | 2026-09-29 | 对应 Keel v2.0.0 全面重绘：流水线改为"自由思考→计划→看一眼→实施"的环；分图从 8 张重切为 6 张（①起草与激活 ②写入与同意 ③看一眼与计划后检查 ④保护引用 ⑤维护 ⑥迭代子技能）；v1 的计划项 P1–P6 全部作废（用户决定，含心智模型挂点搁置）；新增开关与激活机制。 |
+| 4 | 2026-09-29 | 对应 Keel v2.1.0：分图①重画——数值就绪检查删除，激活改为 AI 语义判断 + keel_config 显式单向声明，新增全生命周期清晰度铁律节点；分图②——全部数值门禁移除（仅存在性必填），refs 表禁直写，激活不再作为写入副作用；分图③——结构化检查补齐五项对照；分图⑤——keel_health 并入 status；工具 17→16；保护引用默认 id 改 REF*。 |

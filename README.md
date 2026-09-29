@@ -2,13 +2,15 @@
 
 **Keel is the AI's authoritative notebook: a guarded DATUM of the project's requirements and concept model that prevents topic forgetting and silent drift across sessions — while leaving the AI maximum freedom in how it thinks and works.**
 
-> 好记性不如烂笔头 — a short pencil beats a long memory. Keel gives the agent that pencil, and makes sure what lands on paper cannot silently change.
+> The palest ink is better than the best memory. Keel gives the agent that pen, and makes sure what lands on paper cannot silently change.
 
 Keel is an agent plugin for AI-assisted coding hosts (Claude Code, ZCode, and other MCP-compatible agents). It is a zero-dependency Node.js MCP server, one main skill, four iteration sub-skills, and a session hook.
 
 **中文说明见 [README-zh.md](README-zh.md)。**
 
-> **v2.0.0 is a breaking redesign.** Keel no longer directs a design workflow (the CONCEPT→TECH→HANDOFF pipeline, gates, and handoff bundles are gone). It is now a notebook: the AI thinks and plans freely, and glances at the DATUM after planning, before implementing. See *Migration* at the end.
+> **v2 is a breaking redesign.** Keel no longer directs a design workflow (the CONCEPT→TECH→HANDOFF pipeline, gates, and handoff bundles are gone). It is now a notebook: the AI thinks and plans freely, and glances at the DATUM after planning, before implementing. See *Migration* at the end.
+>
+> **v2.1** goes further on the same axis: every numeric write gate and the mechanical readiness check were removed — the only mechanical requirements left are presence checks and the parser's line formats. Activation is now the agent's explicit one-way declaration (`keel_config {authoritative:true}`), and quality is governed by a **lifespan-clarity rule**: every recorded line must be readable in any later session without the current conversation.
 
 ---
 
@@ -30,16 +32,17 @@ Everything else — how the AI reasons, plans, structures work — is intentiona
 ### The document set, organized by protection level
 
 ```
-L1  write-gating (before the fact)    DATUM.md — the guarded core (while consent is ON)
-L2  tamper-evidence (after the fact)  protected references (your other docs, hash-verified)
-L0  unprotected                       everything else, including the AI's own working notes
+consent-gated (before the fact)   DATUM.md — the guarded core (while consent is ON)
+tamper-evidenced (after the fact) protected references (your other docs, SHA-256-verified)
+unprotected                       everything else, including the AI's own working notes
 ```
 
 ```
 .keel/
 ├─ DATUM.md       the notebook: 00 Intent (goal / scope / numbered requirements)
 │                 · G Glossary (load-bearing terms) · 01 Concept (weighted principles
-│                 P1–P5 + concept model + parking lot) · R Protected References
+│                 P1..Pn — order is priority — + concept model + parking lot)
+│                 · R Protected References (default ids REF1..)
 ├─ AMENDMENTS.md  append-only history: what changed, when, with whose consent;
 │                 compacted into archive/ (never deleted)
 └─ archive/ · state.json
@@ -52,8 +55,8 @@ The altitude contract is unchanged from v1: DATUM's membership criterion is *non
 Keel has exactly two phases and two switches:
 
 ```
-draft ──(mechanical readiness check passes)──▶ authoritative
-         goal + scope + ≥1 requirement + principles 3–5 + ≥1 glossary term
+draft ──(the agent declares the DATUM complete: keel_config {authoritative:true})──▶ authoritative
+         a semantic judgment in one direction (one-way) — no mechanical readiness check
 
 authoritative:  consent  ON (default) — core writes staged until you consent
                           OFF — the AI self-manages writes (still fully logged)
@@ -62,8 +65,8 @@ authoritative:  consent  ON (default) — core writes staged until you consent
 ```
 
 - While **draft**, the AI writes freely; the server logs every change (`ai-managed`) and never asks.
-- The moment readiness passes, the document becomes authoritative, **both switches default ON**, and the server tells the agent to announce the activation to you.
-- `keel_config {consent, steward}` flips either switch anytime, in either direction — no re-validation, your call. A pure-notebook project (`keel_init {notebook:true}`) starts with both off permanently, until you say otherwise.
+- When the AI judges the essentials recorded (in language that survives the session), it declares the DATUM authoritative itself — one-way — **both switches take effect, default ON**, and it announces the activation to you at that moment.
+- `keel_config {consent, steward}` flips either switch anytime, in either direction — no re-validation, your call. A pure-notebook project (`keel_init {notebook:true}`) starts with both off, until you say otherwise.
 
 ### The glance habit (the heart of v2)
 
@@ -108,7 +111,7 @@ On hook-less hosts (Codex), the skill falls back to calling `keel_digest` at ses
 
 You: *“用 keel 记一下：一个本地笔记应用，核心是双向链接，改名字后链接不能断。”*
 
-The agent initializes the notebook, extracts numbered requirements (confirming them with you), and — while the DATUM is draft — records them freely, along with principles and a concept model in everyday words. The last piece (a load-bearing glossary term) completes the readiness check; the server flips the DATUM to authoritative and the agent tells you: *"consent mechanism and STEWARD are now ON — say the word to switch either off."*
+The agent initializes the notebook, extracts numbered requirements (confirming them with you), and — while the DATUM is draft — records them freely, along with principles and a concept model in everyday words. When it judges the notebook complete, it declares the DATUM authoritative (`keel_config {authoritative:true}`) and tells you: *"consent mechanism and STEWARD are now ON — say the word to switch either off."*
 
 Later, in an unrelated session, the agent plans a new feature: *merge multiple selections into one question.* Before implementing, it glances: this touches P2 (*the conversation is the single authoritative source of context*). It stops and offers: amend DATUM (with ripple shown) / drop / explicit exemption. Requirements don't erode silently — that's the whole point.
 
@@ -129,7 +132,7 @@ claude plugin install keel@keel-marketplace
 
 Inside an interactive session the same steps are slash commands: `/plugin marketplace add maxi3777/Keel`, then `/plugin install keel@keel-marketplace`. (On hosts with a different command syntax the same two operations apply; the plugin name is `keel`.)
 
-Installing registers the MCP server (`.mcp.json` → `node ${CLAUDE_PLUGIN_ROOT}/mcp/server.js`), the five skills (main + four iteration tools), and the SessionStart hook. To update later: update the marketplace and reinstall, or pin a ref when adding (`maxi3777/Keel@v2.0.0`).
+Installing registers the MCP server (`.mcp.json` → `node ${CLAUDE_PLUGIN_ROOT}/mcp/server.js`), the five skills (main + four iteration tools), and the SessionStart hook. To update later: update the marketplace and reinstall, or pin a ref when adding (`maxi3777/Keel@v2.1.0`).
 
 Optionally, verify the mechanical layer end-to-end on a clone:
 
@@ -164,7 +167,7 @@ Copies all five skills to `~/.codex/skills/` and appends `[mcp_servers.keel]` to
 2. **Skills** — copy or symlink each directory under `skills/` into your host's skills directory.
 3. **Session hook** — register `node /absolute/path/to/Keel/hooks/session-start.js` as a session-start command (optional; without it the skill calls `keel_digest` itself).
 
-**Verify**: in a scratch directory, tell your agent *"use keel to start a test project"* — you should see `.keel/DATUM.md` created, free writes while draft, and the activation announcement once the notebook is complete.
+**Verify**: in a scratch directory, tell your agent *"use keel to start a test project"* — you should see `.keel/DATUM.md` created, free writes while draft, and the activation announcement once the agent declares the notebook complete.
 
 ## Usage by scenario
 
@@ -175,7 +178,7 @@ There are no slash subcommands. One skill, natural language:
 - **Changing the notebook** — just describe the change; with consent ON you will be shown rationale + ripple and asked to confirm.
 - **Adjusting trust** — “把同意机制关掉” / “打开 steward” → `keel_config` (either direction, no re-validation).
 - **Protecting documents** — “把这个架构文档保护起来” → `keel_ref_add` (+ verify on demand).
-- **Checking in** — “keel 状态怎么样” → `keel_status` (phase, switches, readiness, pending proposals, batch notifications, health).
+- **Checking in** — “keel 状态怎么样” → `keel_status` (phase, switches, counts, pending proposals, batch notifications, health).
 - **Maintenance** — when the amendment log grows, `keel_status` says so; the agent compacts it (raw log archived verbatim, never deleted). The health summary reports core-amendment counts on two clocks (since last compaction, always labeled; lifetime, never resets) plus an **oscillation** count — all *reference metrics*, never thresholds.
 
 ## How enforcement actually works
@@ -226,7 +229,7 @@ Existing v1 projects keep working for reads and writes to 00/G/01/R. A v1 `state
 
 ```bash
 node tests/hostcompat.js   # packaging gate vs host contract
-node tests/smoke.js        # end-to-end: draft → activation → consent → config flips → refs → maintenance
+node tests/smoke.js        # end-to-end: draft → declaration → consent → config flips → refs → maintenance
 ```
 
 Repository layout: `.claude-plugin/` (plugin + marketplace manifests) · `mcp/server.js` (server, v2) · `skills/keel/` (main skill + `references/notebook.md`, `references/steward.md`) · `skills/keel-stress-test|keel-alternatives|keel-relax-probe|keel-skeleton/` (iteration sub-skills) · `templates/` (DATUM / AMENDMENTS) · `hooks/` (session bootstrap + post-confirm refresh) · `docs/PROTOCOL.md` (spec) · `docs/MENTAL-MODEL.md` (the system's own mental model) · `tests/` (hostcompat + smoke).

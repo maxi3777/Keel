@@ -27,7 +27,7 @@ codex exec --skip-git-repo-check -C /some/scratch/dir \
   "call keel_status and paste its result verbatim"
 ```
 
-A `No .keel/DATUM.md …` error means the MCP wiring is correct; create a design with the normal flow (`/keel <requirement>`-style request, or just say you want to start a Keel design).
+A `No .keel/DATUM.md …` error means the MCP wiring is correct; start a notebook with a natural-language request (e.g. "record this project with keel"). There are no slash subcommands.
 
 ## Per-project activation (recommended)
 

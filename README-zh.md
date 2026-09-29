@@ -2,13 +2,15 @@
 
 **Keel 是给 AI 用的权威笔记本：一份受守护的 DATUM，记录项目的需求与概念模型，防止跨会话的主题遗忘与静默漂移——同时把思考和工作方式的最大自由留给 AI。**
 
-> 好记性不如烂笔头。Keel 把这支笔交给 agent，并保证落在纸上的东西不会悄悄变样。
+> The palest ink is better than the best memory. Keel 把这支笔交给 agent，并保证落在纸上的东西不会悄悄变样。
 
 Keel 是面向 AI 辅助编程宿主（Claude Code、ZCode 及其它 MCP 兼容 agent）的插件：一个零依赖的 Node.js MCP server、一个主技能、四个迭代子技能、一个会话 hook。
 
 **English docs: [README.md](README.md)。**
 
-> **v2.0.0 是破坏性重设计。** Keel 不再主导设计流程（CONCEPT→TECH→HANDOFF 流水线、门禁、交付打包全部移除）。它现在是一个笔记本：AI 自由思考、自由做计划，做完计划、动手实施之前看一眼 DATUM。旧项目迁移见文末。
+> **v2 是破坏性重设计。** Keel 不再主导设计流程（CONCEPT→TECH→HANDOFF 流水线、门禁、交付打包全部移除）。它现在是一个笔记本：AI 自由思考、自由做计划，做完计划、动手实施之前看一眼 DATUM。旧项目迁移见文末。
+>
+> **v2.1** 在同一方向上更进一步：删除了全部数值写入门禁与机械就绪检查——剩下的机械要求只有"存在性必填"和解析所依赖的行格式。激活改为 AI 的显式单向声明（`keel_config {authoritative:true}`），质量标准交给**全生命周期清晰度规则**：写进文档的每一行都必须在任意后续会话中脱离当前对话语境仍可读懂。
 
 ---
 
@@ -30,16 +32,16 @@ Keel 的回答刻意做得很小：一份权威文档（**DATUM**）装着需求
 ### 按保护级组织的文件集
 
 ```
-L1  事前写门禁                        DATUM.md —— 受守护的核心（consent 开启时）
-L2  事后防篡改证据                    保护引用（你的其它文档，哈希校验）
-L0  不设防                            其余一切，包括 AI 自己的工作笔记
+事前同意门控                       DATUM.md —— 受守护的核心（consent 开启时）
+事后防篡改证据                     保护引用（你的其它文档，SHA-256 校验）
+不设防                             其余一切，包括 AI 自己的工作笔记
 ```
 
 ```
 .keel/
 ├─ DATUM.md       笔记本本体：00 Intent（目标/范围/编号需求）
-│                 · G Glossary（承重术语）· 01 Concept（加权原则 P1–P5 + 概念模型 + 停车场）
-│                 · R Protected References（保护引用）
+│                 · G Glossary（承重术语）· 01 Concept（加权原则 P1..Pn——顺序即优先级——
+│                 + 概念模型 + 停车场）· R Protected References（默认 id REF1..）
 ├─ AMENDMENTS.md  只追加的历史：改了什么、何时、经谁的同意；压缩后归档（永不删除）
 └─ archive/ · state.json
 ```
@@ -49,8 +51,8 @@ L0  不设防                            其余一切，包括 AI 自己的工�
 ### 模式：draft → authoritative，加两个开关
 
 ```
-draft ──（机械就绪检查通过）──▶ authoritative
-        目标 + 范围外 + ≥1 条需求 + 原则 3–5 条 + ≥1 个术语
+draft ──（AI 判定笔记本完整，显式声明：keel_config {authoritative:true}）──▶ authoritative
+         一次单向的语义判断——没有机械就绪检查
 
 authoritative:  consent  开（默认）—— 核心写入暂存，等用户同意
                          关 —— AI 自主写入（照常全部记审计行）
@@ -59,7 +61,7 @@ authoritative:  consent  开（默认）—— 核心写入暂存，等用户同
 ```
 
 - **draft** 期间 AI 自由写入：server 记录每一次变更（`ai-managed`），但从不发问。
-- 就绪检查通过的那一刻，文档转为 authoritative，**两个开关默认全开**，server 会提示 agent 向你宣告激活。
+- 当 AI 判定"该记的都记了、且脱离当前对话仍可读懂"时，它自己声明 DATUM 转为 authoritative——单向——**两个开关默认全开**，并当场向你宣告激活。
 - `keel_config {consent, steward}` 随时翻转任一开关，双向皆可，**无需重新验证**——你说了算。纯笔记本项目（`keel_init {notebook:true}`）从建立起两开关全关，直到你改变主意。
 
 ### “看一眼”习惯（v2 的心脏）
@@ -105,7 +107,7 @@ agent 做完计划、动手实施之前，把计划对照 DATUM 检查一遍—�
 
 你：“用 keel 记一下：一个本地笔记应用，核心是双向链接，改名字后链接不能断。”
 
-agent 初始化笔记本，提取编号需求（与你逐条确认），在 draft 期自由记录，连同原则和概念模型（日常用语）。最后一个术语注册补齐就绪检查，server 把 DATUM 转为 authoritative，agent 告诉你：“同意机制和 STEWARD 已开启——想关哪个说一声。”
+agent 初始化笔记本，提取编号需求（与你逐条确认），在 draft 期自由记录，连同原则和概念模型（日常用语）。当它判定笔记本完整时，自己声明 DATUM 转为 authoritative（`keel_config {authoritative:true}`），并告诉你：“同意机制和 STEWARD 已开启——想关哪个说一声。”
 
 之后某个不相干的会话里，agent 规划新功能：*把多次选择合并成一个问题*。实施前看一眼：这会触及 P2（*对话是上下文的唯一权威来源*）。它停下来给出三选项：修正 DATUM（附波及）/ 放弃 / 显式豁免。需求不会无声侵蚀——这就是全部意义。
 
@@ -124,7 +126,7 @@ claude plugin marketplace add maxi3777/Keel
 claude plugin install keel@keel-marketplace
 ```
 
-交互会话里同样的两步是斜杠命令：`/plugin marketplace add maxi3777/Keel`，然后 `/plugin install keel@keel-marketplace`。安装即注册 MCP server（`.mcp.json` → `node ${CLAUDE_PLUGIN_ROOT}/mcp/server.js`）、五个技能（主技能 + 四个迭代工具）、SessionStart hook。日后更新：更新市场后重装，或添加时钉住版本（`maxi3777/Keel@v2.0.0`）。
+交互会话里同样的两步是斜杠命令：`/plugin marketplace add maxi3777/Keel`，然后 `/plugin install keel@keel-marketplace`。安装即注册 MCP server（`.mcp.json` → `node ${CLAUDE_PLUGIN_ROOT}/mcp/server.js`）、五个技能（主技能 + 四个迭代工具）、SessionStart hook。日后更新：更新市场后重装，或添加时钉住版本（`maxi3777/Keel@v2.1.0`）。
 
 克隆验证（可选）：
 
@@ -157,7 +159,7 @@ node adapters/codex/install.js     # --uninstall 卸载
 2. **技能** —— 把 `skills/` 下各目录复制或链接到宿主技能目录。
 3. **会话 hook**（可选）—— 把 `node /绝对路径/Keel/hooks/session-start.js` 注册为会话启动命令；没有它，技能会自行调 `keel_digest`。
 
-**验证**：在一个空目录里对 agent 说“用 keel 建个测试项目”——应看到 `.keel/DATUM.md` 被创建、draft 期自由写入、笔记本补齐时的激活宣告。
+**验证**：在一个空目录里对 agent 说“用 keel 建个测试项目”——应看到 `.keel/DATUM.md` 被创建、draft 期自由写入、agent 声明笔记本完整时的激活宣告。
 
 ## 按场景使用
 
@@ -168,7 +170,7 @@ node adapters/codex/install.js     # --uninstall 卸载
 - **改笔记本** —— 直接描述变更；consent 开启时会先看到理由 + 波及，然后请你确认。
 - **调整信任** —— “把同意机制关掉” / “打开 steward” → `keel_config`（双向皆可，无需重新验证）。
 - **保护文档** —— “把这个架构文档保护起来” → `keel_ref_add`（按需 verify）。
-- **查看状态** —— “keel 状态怎么样” → `keel_status`（阶段、开关、就绪、待定提案、批量告知、健康度）。
+- **查看状态** —— “keel 状态怎么样” → `keel_status`（阶段、开关、计数、待定提案、批量告知、健康度）。
 - **维护** —— 审计日志过长时 `keel_status` 会提示；agent 执行压缩（原始日志逐字归档，永不删除）。健康度报告双时钟核心修正计数（上次压缩以来——始终标注；终身——永不清零）与**振荡**计数——全部是*参考指标*，永不作阈值。
 
 ## 强制是怎么落地的
@@ -219,7 +221,7 @@ Keel 浓缩了两轮“综述 + 实验”研究（46 + 48 篇工作；384 轮受
 
 ```bash
 node tests/hostcompat.js   # 打包 vs 宿主契约门禁
-node tests/smoke.js        # 端到端：draft → 激活 → 同意 → 开关翻转 → 保护引用 → 维护
+node tests/smoke.js        # 端到端：draft → 声明激活 → 同意 → 开关翻转 → 保护引用 → 维护
 ```
 
 仓库结构：`.claude-plugin/`（插件+市场清单）· `mcp/server.js`（server v2）· `skills/keel/`（主技能 + `references/notebook.md`、`references/steward.md`）· `skills/keel-stress-test|keel-alternatives|keel-relax-probe|keel-skeleton/`（迭代子技能）· `templates/`（DATUM / AMENDMENTS）· `hooks/`（会话自举 + 确认后刷新）· `docs/PROTOCOL.md`（规范）· `docs/MENTAL-MODEL.md`（系统自身的心智模型）· `tests/`（hostcompat + smoke）。
