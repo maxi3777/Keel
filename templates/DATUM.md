@@ -1,15 +1,18 @@
 # DATUM — <project>
 
-<!-- Maintained exclusively by the Keel MCP server (keel_* tools).
-     Hand-editing bypasses the consent mechanism, traceability closure, and
-     the amendment log — never do it. Reads are free: this is plain markdown.
-     This is the project's authoritative notebook: requirements (00), the
-     concept model (01), load-bearing terms (G), and hash-pinned protected
-     documents (R). History lives in AMENDMENTS.md (append-only).
-     Modes: draft (writes apply immediately, logged ai-managed) →
-     authoritative (declared by the agent via keel_config {authoritative:true}
-     when the essentials are recorded; consent + steward switches then take
-     effect, both default on). Flip switches via keel_config. -->
+<!-- Root page of the Keel notebook (module pages live under pages/; routing
+     in INDEX.md). Maintained exclusively by the Keel MCP server (keel_* tools);
+     hand-editing bypasses consent, traceability closure and the amendment log —
+     never do it. Reads are free: plain markdown.
+     The root page holds what is project-global: identity, scope, numbered
+     requirements, weighted priorities, cross-module invariants, global
+     decisions and open questions. Module-level knowledge lives on module pages.
+     History lives in AMENDMENTS.md (append-only).
+     Phases are per-page: draft (writes apply immediately, logged ai-managed) →
+     authoritative (declared by the agent via keel_config {authoritative:true,
+     page:"root"} when the essentials are recorded; consent + steward then apply
+     to this page, both default on). Reopen: keel_config {phase:"draft",
+     page:"root"} — user-directed, snapshotted. -->
 
 ## 00 Intent
 
@@ -19,18 +22,11 @@
 
 ### Requirements
 
-- Requirement R1: (TBD)
+<!-- Number them R1, R2, … as you record them; ids are globally unique across
+     all pages (root and modules share one namespace). A constraint is a
+     requirement phrased as a boundary — same line format. -->
 
-## G Glossary
-
-<!-- Registration bar: only terms that are load-bearing somewhere in DATUM or
-     have an ambiguity history belong here; everyday words are not registered.
-     A term's consent tier is inherited from where it is load-bearing:
-     P*/01/00 = core, everything else = peripheral.
-     When one word is used with two meanings, this table is the arbiter. -->
-
-| Term | Definition (one concept-level sentence) | Load-bearing in | Aliases | Status |
-|---|---|---|---|---|
+- Requirement: (TBD)
 
 ## 01 Concept
 
@@ -42,10 +38,11 @@
 
 <!-- One line per settled direction, each self-contained for a cold reader:
      - Decision D1: <choice> — because <reason> — revisit if <condition>
+     Number them D1, D2, … — ids are globally unique across all pages.
      The "because" survives the session that produced it; the "revisit if"
      states when the decision stops holding. -->
 
-- Decision D1: (TBD)
+- Decision: (TBD)
 
 ### Concept model
 
@@ -55,6 +52,8 @@
      - Entity: <name> — <one line>
      - Flow: <name>: 1) … 2) …
      - Invariant: <always-true statement>
+     This page keeps only invariants ANY session could violate (the digest
+     injects them everywhere); module-local ones live on module pages.
      Entities should be referenced by at least one Flow/Invariant — an
      unreferenced entity is usually decoration. Mermaid blocks are allowed
      as projections of the prose (never replacements for it); the server
@@ -68,16 +67,3 @@
      interim choice, so a cold session never has to invent one> -->
 
 - (none open)
-
-## R Protected References
-
-<!-- Derived documents admitted into the anti-degradation scope. Protection is
-     tamper-evidence, not write-gating: whole-file SHA-256 recorded at
-     admission and re-checked on verify; edits stay free, mismatches are
-     detected and reported. carries = the core claims (P*/01/00 refs) this
-     document renders; it may be empty when the document is protected for its
-     own sake. Adding or removing a reference extends the protection boundary
-     and therefore follows the core tier while consent is active. -->
-
-| ref | path | carries | sha256 | admitted | status |
-|---|---|---|---|---|---|

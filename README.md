@@ -37,51 +37,62 @@ unprotected                       everything else, including the AI's own workin
 
 ```
 .keel/
-├─ DATUM.md       the notebook (plain markdown, free to read): 00 Intent (goal /
-│                 scope with reasons / numbered requirements R*) · G Glossary ·
-│                 01 Concept (weighted principles P1..Pn — order is priority —
-│                 · decisions D* · concept model as Entity/Flow/Invariant lines
-│                 · open questions) · R Protected References (default ids REF1..)
-├─ AMENDMENTS.md  append-only history: what changed, when, with whose consent;
-│                 compacted into archive/ (never deleted)
+├─ DATUM.md       the root page (plain markdown, free to read): 00 Intent
+│                 (goal / scope with reasons / numbered requirements R-n)
+│                 · 01 Concept (weighted principles P1..Pn — order is
+│                 priority — · decisions D-n · concept model as
+│                 Entity/Flow/Invariant lines · open questions)
+├─ INDEX.md       the routing table (server-maintained): pages (name/path/
+│                 covers/lastAmend) + protected references (default ids REF1..)
+├─ pages/
+│  ├─ terms.md    the global glossary (one vocabulary across all pages)
+│  └─ <module>.md module pages: module-scoped requirements + concept model,
+│                 decisions, open questions (no P-n — priorities are global)
+├─ AMENDMENTS.md  one global append-only history: what changed, when, with
+│                 whose consent; compacted into archive/ (never deleted)
 └─ archive/ · state.json
 ```
 
-The altitude contract: DATUM's membership criterion is *non-degradability*. It records design-level facts only; a document that tried to guard everything would rot and lose authority.
+The altitude contract: the notebook's membership criterion is *non-degradability*. It records design-level facts only; a document that tried to guard everything would rot and lose authority. Claim ids (`R-n`, `P-n`, `D-n`) are globally unique across all pages.
 
-### Modes: draft → authoritative, and two switches
+### Modes: per-page phases, two project switches
 
-Keel has exactly two phases and two switches:
+Phases are **per-page** — a complete module can enter the design phase (declared, guarded) while an unfinished one keeps writing freely:
 
 ```
-draft ──(the agent declares the DATUM complete: keel_config {authoritative:true})──▶ authoritative
-         a semantic judgment in one direction (one-way) — no mechanical readiness check
+each page:  draft ──(the agent declares this page's essentials recorded:
+            keel_config {authoritative:true, page})──▶ authoritative
+            one-way per epoch — reopen ({phase:"draft", page}) is user-directed:
+            snapshot, pending proposals dropped, epoch boundary logged
 
-authoritative:  consent  ON (default) — core writes staged until you consent
-                          OFF — the AI self-manages writes (still fully logged)
-                steward  ON (default) — structured post-plan check
-                          OFF — only the glance habit remains
+project switches (any authoritative page activates them, default ON):
+  consent  ON — core writes staged until you consent / OFF — AI self-manages (logged)
+  steward  ON — structured post-plan check              / OFF — the glance habit alone
 ```
 
-- While **draft**, the AI writes freely; the server logs every change (`ai-managed`) and never asks.
-- When the AI judges the essentials recorded (in language that survives the session), it declares the DATUM authoritative itself — one-way — **both switches take effect, default ON**, and it announces the activation to you at that moment.
-- `keel_config {consent, steward}` flips either switch anytime, in either direction — no re-validation, your call. A pure-notebook project (`keel_init {notebook:true}`) starts with both off, until you say otherwise.
+- While a page is **draft**, the AI writes it freely; the server logs every change (`ai-managed`) and never asks.
+- When the AI judges a page's essentials recorded (in language that survives the session), it declares that page authoritative itself — and **announces it to you at that moment**.
+- `keel_config {consent, steward}` flips either project switch anytime, in either direction — no re-validation, your call. A pure-notebook project (`keel_init {notebook:true}`) starts with both off, until you say otherwise.
+
+### Module pages and routing (the INDEX)
+
+Single-module is just an INDEX with no module rows yet. When a module's knowledge is dense enough to need its own addressable home: `keel_page_add {name, covers}` — `covers` are stable anchors (repo paths/globs, glossary terms, claim ids) that every future session matches its plan against, reading only the matched pages. A provably unrelated plan reads nothing (the zero-match rule). `lastAmend` per page is a watermark: if it moved after the AI last read that page, it re-reads — memory of a page is evidence, not the source. Reworking a module = reopen: batch-draft mode for one page, snapshotted, with a reverse ripple reporting which terms and protected references need re-affirming.
 
 ### The glance habit (the heart of v2)
 
-After the agent finishes a plan and before implementing, it checks the plan against the digest — goal, scope, requirements, principles, invariants, decisions — **naming what the plan touches** (match, don't bulk-read; a provably unrelated plan owes the notebook one line: "zero matches"). Outcomes: no conflict → proceed; conflict → amend / drop / explicit exemption; **disagreement with the DATUM itself → propose an amendment** (the notebook is authoritative, not sacred). With steward ON this glance is a structured check (`keel_ripple`, stale refs, scope-growth proposals); with steward OFF it stays a plain glance.
+After the agent finishes a plan and before implementing, it checks the plan against the digest — the **root pins** (goal, scope, requirements, principles, invariants, decisions: the lines any session could violate, injected everywhere) plus the **INDEX covers** — naming what the plan touches and reading only the matched pages (a provably unrelated plan owes the notebook one line: "zero matches"). Outcomes: no conflict → proceed; conflict → amend / drop / explicit exemption; **disagreement with the notebook itself → propose an amendment** (the notebook is authoritative, not sacred). With steward ON this glance is a structured check (`keel_ripple`, stale refs, scope-growth proposals); with steward OFF it stays a plain glance.
 
 The timing is deliberate: the check comes *after* planning, so it never constrains how the agent thinks — only what it commits to.
 
 ### Consent tiers (while consent is ON)
 
-- **Core** (00/01 content, load-bearing terms, protected references): show rationale + ripple → your explicit consent → the server applies it, storing your consenting words as audit evidence.
-- **Peripheral** (open-question notes and other non-core content): applied immediately, batch-reported.
+- **Core** (writes to authoritative surfaces: page content, terms citing authoritative claims, protected references, routing metadata): show rationale + ripple → your explicit consent → the server applies it, storing your consenting words as audit evidence.
+- **Peripheral** (open-question notes and non-core content): applied immediately, batch-reported.
 - The server — not the AI's judgment — computes which is which, via traceability closure. A staged proposal is refused at confirm if its target changed underneath (anti-clobber), and one logical change across sections is one batched proposal: one consent, one audit row.
 
 ### Protected references
 
-Your other documents (an API spec, an architecture note, a generated mental model) can be admitted into the anti-degradation scope: Keel records the whole-file SHA-256 and re-verifies on demand. Protection is tamper-evidence, not write-gating — the owning workflow edits freely; divergence is *detected and reported*, never blocked. When a core amendment lands, Keel reports which protected documents are now suspected stale; regeneration belongs to the owning workflow.
+Your other documents (an API spec, an architecture note, a generated mental model) can be admitted into the anti-degradation scope — listed in INDEX: Keel records the whole-file SHA-256 and re-verifies on demand (`carries` = the claim ids or pages the document renders; optional — a document can be protected for its own sake, e.g. a notes-only project). Protection is tamper-evidence, not write-gating — the owning workflow edits freely; divergence is *detected and reported*, never blocked. When a core amendment lands, Keel reports which protected documents are now suspected stale; regeneration belongs to the owning workflow.
 
 ### Iteration sub-skills
 
@@ -100,7 +111,7 @@ All four work with or without a DATUM (skeleton requires one), keep temp files o
 
 "Resident" means three concrete things, not one:
 
-1. **SessionStart hook** (mechanical). If `.keel/DATUM.md` exists in the working directory, the hook injects a *verbatim excerpt* of the notebook as hook JSON `additionalContext` — led by a document pointer, followed by the mode line (phase + switches), goal/scope/requirements, principles, invariants, decisions, top terms, protected refs, and recent amendments. Not an AI summary; sliced by code. A **PostToolUse hook** refreshes it after every applied consent. The Codex adapter registers the same hooks in `~/.codex/hooks.json`; on hosts without hooks, the skill falls back to calling `keel_digest` itself.
+1. **SessionStart hook** (mechanical). If `.keel/DATUM.md` exists in the working directory, the hook injects the *digest* — the map, not the territory: doc pointer, per-page phase line, root pins (goal/scope/requirements, principles, invariants, decisions), the INDEX routing table verbatim, protected refs, and recent amendments. Not an AI summary; sliced by code. A **PostToolUse hook** refreshes it after every applied consent. The Codex adapter registers the same hooks in `~/.codex/hooks.json`; on hosts without hooks, the skill falls back to calling `keel_digest` itself.
 2. **Skill trigger** (behavioral). The main skill's description loads the protocol whenever the user mentions Keel *or* `.keel/DATUM.md` exists — so the glance habit engages even in sessions where nobody says "keel".
 3. **MCP server** (mechanical backstop). DATUM writes only go through the server; while consent is ON, core changes are staged until you consent. Divergence without a paper trail is not possible through the supported path.
 
@@ -131,7 +142,7 @@ claude plugin install keel@keel-marketplace
 
 Inside an interactive session the same steps are slash commands: `/plugin marketplace add maxi3777/Keel`, then `/plugin install keel@keel-marketplace`. (On hosts with a different command syntax the same two operations apply; the plugin name is `keel`.)
 
-Installing registers the MCP server (`.mcp.json` → `node ${CLAUDE_PLUGIN_ROOT}/mcp/server.js`), the five skills (main + four iteration tools), and the SessionStart + PostToolUse hooks. To update later: update the marketplace and reinstall, or pin a ref when adding (`maxi3777/Keel@v2.2.0`).
+Installing registers the MCP server (`.mcp.json` → `node ${CLAUDE_PLUGIN_ROOT}/mcp/server.js`), the five skills (main + four iteration tools), and the SessionStart + PostToolUse hooks. To update later: update the marketplace and reinstall, or pin a ref when adding (`maxi3777/Keel@v2.3.0`).
 
 Optionally, verify the mechanical layer end-to-end on a clone:
 
@@ -172,8 +183,10 @@ Copies all five skills to `~/.codex/skills/`, appends `[mcp_servers.keel]` to `~
 
 There are no slash subcommands. One skill, natural language:
 
-- **Starting** — “用 keel 开始记录这个项目” → init, requirement extraction, free authoring while draft, activation announcement.
-- **Working** — nothing to say; the glance happens by itself. When a plan conflicts with the DATUM, the agent stops and offers amend / drop / exempt.
+- **Starting** — “用 keel 开始记录这个项目” → init, requirement extraction, free authoring while draft, per-page activation announcements.
+- **Working** — nothing to say; the glance happens by itself. When a plan conflicts with the notebook, the agent stops and offers amend / drop / exempt.
+- **Growing into modules** — “给订单模块单开一页” → `keel_page_add` (+ covers); routing and zero-match take care of the rest.
+- **Reworking a module** — “重做 orders 模块” → reopen that page (snapshot, batch-draft, reverse ripple), then re-declare when stable.
 - **Changing the notebook** — just describe the change; with consent ON you will be shown rationale + ripple and asked to confirm.
 - **Adjusting trust** — “把同意机制关掉” / “打开 steward” → `keel_config` (either direction, no re-validation).
 - **Protecting documents** — “把这个架构文档保护起来” → `keel_ref_add` (+ verify on demand).
@@ -218,7 +231,7 @@ Internal evidence that shaped the mechanics (not from papers): in the authors' 3
 
 - Keel guards **the topic, not the process**. If you need guaranteed deliverable concreteness, get it from your plan/build workflow and protect its output via `keel_ref_add`.
 - Consent is only as meaningful as your attention — but there is no phase pipeline to rubber-stamp: either you are asked for twelve words, or you have explicitly opted out.
-- Single design authority: Keel does not handle multiple agents concurrently authoring one DATUM.
+- Single design authority: Keel does not handle multiple agents concurrently authoring one notebook — near-simultaneous sessions are serialized by the anti-clobber check at confirm time (the second proposal is refused and re-proposed).
 - No autonomous evolution: Keel never runs unattended loops that mutate the design.
 
 ## Development
@@ -228,4 +241,4 @@ node tests/hostcompat.js   # packaging gate vs host contract
 node tests/smoke.js        # end-to-end: draft → declaration → consent → config flips → refs → maintenance
 ```
 
-Repository layout: `.claude-plugin/` (plugin + marketplace manifests) · `mcp/server.js` (server, v2) · `skills/keel/` (main skill + `references/notebook.md`, `references/steward.md`) · `skills/keel-stress-test|keel-alternatives|keel-relax-probe|keel-skeleton/` (iteration sub-skills) · `templates/` (DATUM / AMENDMENTS) · `hooks/` (session bootstrap + post-confirm refresh) · `docs/PROTOCOL.md` (spec) · `docs/MENTAL-MODEL.md` (the system's own mental model) · `tests/` (hostcompat + smoke).
+Repository layout: `.claude-plugin/` (plugin + marketplace manifests) · `mcp/server.js` (server) · `skills/keel/` (main skill + `references/notebook.md`, `references/steward.md`) · `skills/keel-stress-test|keel-alternatives|keel-relax-probe|keel-skeleton/` (iteration sub-skills) · `templates/` (DATUM / PAGE / TERMS / INDEX / AMENDMENTS) · `hooks/` (session bootstrap + post-confirm refresh) · `adapters/codex/` · `docs/PROTOCOL.md` (spec) · `docs/MENTAL-MODEL.md` (the system's own mental model) · `tests/` (hostcompat + smoke).

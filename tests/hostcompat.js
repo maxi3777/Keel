@@ -91,7 +91,8 @@ const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 // R4 — packaging-referenced files exist
 {
   const files = [
-    'templates/DATUM.md', 'templates/AMENDMENTS.md',
+    'templates/DATUM.md', 'templates/AMENDMENTS.md', 'templates/INDEX.md',
+    'templates/PAGE.md', 'templates/TERMS.md',
     'mcp/server.js',
   ];
   for (const f of files) ok(fs.existsSync(path.join(root, f)), `file exists: ${f}`);

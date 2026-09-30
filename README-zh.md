@@ -37,47 +37,59 @@ Keel 的回答刻意做得很小：一份权威文档（**DATUM**）装着需求
 
 ```
 .keel/
-├─ DATUM.md       笔记本本体（纯 markdown，自由读取）：00 Intent（目标 / 范围含理由 /
-│                 编号需求 R*）· G Glossary（承重术语）· 01 Concept（加权原则
-│                 P1..Pn——顺序即优先级——· 决策 D* · Entity/Flow/Invariant 行式
-│                 概念模型 · 未决问题）· R Protected References（默认 id REF1..）
-├─ AMENDMENTS.md  只追加的历史：改了什么、何时、经谁的同意；压缩后归档（永不删除）
+├─ DATUM.md       根页（纯 markdown，自由读取）：00 Intent（目标 / 范围含理由 /
+│                 编号需求 R-n）· 01 Concept（加权原则 P1..Pn——顺序即优先级——
+│                 · 决策 D-n · Entity/Flow/Invariant 行式概念模型 · 未决问题）
+├─ INDEX.md       路由表（server 维护）：pages（页名/路径/covers/lastAmend 水位线）
+│                 + 保护引用表（默认 id REF1..）
+├─ pages/
+│  ├─ terms.md    全局词汇表（全部页面共用一套词汇）
+│  └─ <模块>.md   模块页：模块范围与需求 + 概念模型、决策、未决问题
+│                 （无 P-n——优先级是项目级的，只在根页）
+├─ AMENDMENTS.md  全局唯一只追加历史：改了什么、何时、经谁的同意；
+│                 压缩后归档（永不删除）
 └─ archive/ · state.json
 ```
 
-高度契约：DATUM 的收录判据是*非降级性*——只记录设计层事实；什么都想守护的文档会腐烂并失去权威。
+高度契约：笔记本的收录判据是*非降级性*——只记录设计层事实；什么都想守护的文档会腐烂并失去权威。claim id（`R-n`/`P-n`/`D-n`）跨全部页面全局唯一。
 
-### 模式：draft → authoritative，加两个开关
+### 模式：逐页 phase，两个项目级开关
+
+phase **按页算**——完整的模块可以先进入设计期（已声明、受守护），未完成的模块继续自由写：
 
 ```
-draft ──（AI 判定笔记本完整，显式声明：keel_config {authoritative:true}）──▶ authoritative
-         一次单向的语义判断——没有机械就绪检查
+每页：  draft ──（AI 判定该页该记的已记全：keel_config {authoritative:true, page}）
+        ──▶ authoritative   单向/纪元；重开（{phase:"draft", page}）由用户指令触发：
+        快照入档 · 该页暂存提案作废 · 纪元边界记入日志
 
-authoritative:  consent  开（默认）—— 核心写入暂存，等用户同意
-                         关 —— AI 自主写入（照常全部记审计行）
-                steward  开（默认）—— 计划后结构化检查
-                         关 —— 只剩“看一眼”的基础习惯
+项目开关（存在任一 authoritative 页即生效，默认开）：
+  consent  开 —— 核心写入暂存至用户同意 / 关 —— AI 自管（照常记审计行）
+  steward  开 —— 计划后结构化检查     / 关 —— 只剩"看一眼"的基础习惯
 ```
 
-- **draft** 期间 AI 自由写入：server 记录每一次变更（`ai-managed`），但从不发问。
-- 当 AI 判定"该记的都记了、且脱离当前对话仍可读懂"时，它自己声明 DATUM 转为 authoritative——单向——**两个开关默认全开**，并当场向你宣告激活。
-- `keel_config {consent, steward}` 随时翻转任一开关，双向皆可，**无需重新验证**——你说了算。纯笔记本项目（`keel_init {notebook:true}`）从建立起两开关全关，直到你改变主意。
+- 某页处于 **draft** 期间，AI 自由写入该页：server 记录每一次变更（`ai-managed`），从不发问。
+- 当 AI 判定某页"该记的都记了、且脱离当前对话仍可读懂"时，它自己声明该页 authoritative——并**当场向你宣告**。
+- `keel_config {consent, steward}` 随时翻转任一项目开关，双向皆可，**无需重新验证**——你说了算。纯笔记本项目（`keel_init {notebook:true}`）从建立起两开关全关。
+
+### 模块页与路由（INDEX）
+
+单模块只是 INDEX 里还没有模块行的多模块——加页即升级，无模式切换、无迁移。当某模块的知识密到需要自己的可寻址之家：`keel_page_add {name, covers}`——`covers` 是稳定锚（仓库路径/glob、术语、claim id），未来每个会话拿计划与它匹配，**只读命中的页**；可证无关的计划一行"零匹配"照常执行。每页的 `lastAmend` 是水位线：AI 上次读它之后若变动过就重读——对某页的记忆是证据，不是来源。重做某模块 = 重开：该页进入批量草稿模式（快照、反向涟漪报告哪些术语与保护引用待重申），稳定后重新声明。
 
 ### “看一眼”习惯（v2 的心脏）
 
-agent 做完计划、动手实施之前，把计划对照 digest 检查——目标、范围、需求、原则、不变量、决策——**点名计划触及什么**（匹配式，不整本读；与笔记本可证无关的计划只需一句”零匹配”）。结果：无冲突 → 继续；有冲突 → 修正 / 放弃 / 显式豁免；**对 DATUM 本身有异议 → 提出修正案**（笔记本是权威的，不是神圣的）。steward 开启时，”看一眼”升级为结构化检查（`keel_ripple`、stale refs、扩围提案）；关闭时就是普通一瞥。
+agent 做完计划、动手实施之前，把计划对照 digest 检查——**根页 pins**（目标、范围、需求、原则、不变量、决策：任何会话都可能违反的行，无条件注入）加 **INDEX covers**——点名计划触及什么，只读命中的页（与笔记本可证无关的计划只需一句”零匹配”）。结果：无冲突 → 继续；有冲突 → 修正 / 放弃 / 显式豁免；**对笔记本本身有异议 → 提出修正案**（笔记本是权威的，不是神圣的）。steward 开启时，”看一眼”升级为结构化检查（`keel_ripple`、stale refs、扩围提案）；关闭时就是普通一瞥。
 
 时机是刻意选的：检查发生在*计划完成之后*，所以它从不约束 agent 怎么想——只约束它承诺什么。
 
 ### 同意分层（consent 开启时）
 
-- **核心**（00/01 内容、承重术语、保护引用）：展示理由 + 波及 → 你的明确同意 → server 落盘，你的同意原话存为审计证据。
+- **核心**（写入 authoritative 表面：页面内容、引用权威断言的术语、保护引用、路由元数据）：展示理由 + 波及 → 你的明确同意 → server 落盘，你的同意原话存为审计证据。
 - **外围**（未决问题笔记等非核心内容）：立即落盘，批量告知。
 - 哪个算核心由 **server 机械计算**（traceability closure），不是 AI 的判断。暂存提案在 confirm 时若发现底层内容已变会被拒绝（防覆盖）；跨段的一次逻辑变更 = 一次批量提案：一次同意、一行审计。
 
 ### 保护引用
 
-你的其它文档（API 规格、架构笔记、生成的心智模型）可以纳入防降级范围：Keel 记录整文件 SHA-256，按需重验。保护是防篡改*证据*，不是写门禁——拥有方自由编辑，分叉被*检测并报告*，从不拦截。核心修正落盘时，Keel 报告哪些保护文档疑似过期；再生归拥有方工作流。
+你的其它文档（API 规格、架构笔记、生成的心智模型）可以纳入防降级范围——登记在 INDEX：Keel 记录整文件 SHA-256，按需重验（`carries` = 该文档承载的 claim id 或页名，**可空**——文档也可以纯为防篡改而受保护，如纯笔记项目）。保护是防篡改*证据*，不是写门禁——拥有方自由编辑，分叉被*检测并报告*，从不拦截。核心修正落盘时，Keel 报告哪些保护文档疑似过期；再生归拥有方工作流。
 
 ### 迭代子技能
 
@@ -96,7 +108,7 @@ agent 做完计划、动手实施之前，把计划对照 digest 检查——目
 
 “常驻”具体是三件事：
 
-1. **SessionStart hook**（机械）。工作目录存在 `.keel/DATUM.md` 时，hook 以严格 JSON `additionalContext` 注入笔记本的*原文切片*——文档指针打头，随后是模式行（阶段+开关）、目标/范围/需求、原则、不变量、决策、前几条术语/保护引用、最近修正。不是 AI 摘要，是代码切的。**PostToolUse hook** 在每次同意落盘后刷新注入。Codex 适配器把同样的 hooks 注册进 `~/.codex/hooks.json`；无 hook 宿主上，技能自行在会话开始与确认后调 `keel_digest`。
+1. **SessionStart hook**（机械）。工作目录存在 `.keel/DATUM.md` 时，hook 以严格 JSON `additionalContext` 注入 *digest*——是地图不是全部内容：文档指针、逐页 phase 行、根页 pins（目标/范围/需求/原则/不变量/决策）、INDEX 路由表原文、保护引用、最近修正。不是 AI 摘要，是代码切的。**PostToolUse hook** 在每次同意落盘后刷新注入。Codex 适配器把同样的 hooks 注册进 `~/.codex/hooks.json`；无 hook 宿主上，技能自行在会话开始与确认后调 `keel_digest`。
 2. **技能触发**（行为）。主技能的描述在“用户提到 Keel”**或** `.keel/DATUM.md` 存在”时加载协议——没人提 keel 的会话里，“看一眼”的习惯照样生效。
 3. **MCP server**（机械兜底）。DATUM 写入只走 server；consent 开启时核心变更暂存到用户同意为止。经支持路径的静默漂移不可能不留痕。
 
@@ -125,7 +137,7 @@ claude plugin marketplace add maxi3777/Keel
 claude plugin install keel@keel-marketplace
 ```
 
-交互会话里同样的两步是斜杠命令：`/plugin marketplace add maxi3777/Keel`，然后 `/plugin install keel@keel-marketplace`。安装即注册 MCP server（`.mcp.json` → `node ${CLAUDE_PLUGIN_ROOT}/mcp/server.js`）、五个技能（主技能 + 四个迭代工具）、SessionStart 与 PostToolUse hooks。日后更新：更新市场后重装，或添加时钉住版本（`maxi3777/Keel@v2.2.0`）。
+交互会话里同样的两步是斜杠命令：`/plugin marketplace add maxi3777/Keel`，然后 `/plugin install keel@keel-marketplace`。安装即注册 MCP server（`.mcp.json` → `node ${CLAUDE_PLUGIN_ROOT}/mcp/server.js`）、五个技能（主技能 + 四个迭代工具）、SessionStart 与 PostToolUse hooks。日后更新：更新市场后重装，或添加时钉住版本（`maxi3777/Keel@v2.3.0`）。
 
 克隆验证（可选）：
 
@@ -164,8 +176,10 @@ node adapters/codex/install.js     # --uninstall 卸载
 
 没有斜杠子命令。一个技能 + 自然语言：
 
-- **开始** —— “用 keel 开始记录这个项目” → 初始化、需求提取、draft 期自由书写、激活宣告。
-- **日常干活** —— 什么都不用说，“看一眼”自动发生；计划与 DATUM 冲突时 agent 会停下来给三选项。
+- **开始** —— “用 keel 开始记录这个项目” → 初始化、需求提取、draft 期自由书写、逐页激活宣告。
+- **日常干活** —— 什么都不用说，“看一眼”自动发生；计划与笔记本冲突时 agent 会停下来给三选项。
+- **长出模块** —— “给订单模块单开一页” → `keel_page_add`（+ covers）；路由与零匹配规则接管其余。
+- **重做模块** —— “重做 orders 模块” → 重开该页（快照、批量草稿、反向涟漪），稳定后重新声明。
 - **改笔记本** —— 直接描述变更；consent 开启时会先看到理由 + 波及，然后请你确认。
 - **调整信任** —— “把同意机制关掉” / “打开 steward” → `keel_config`（双向皆可，无需重新验证）。
 - **保护文档** —— “把这个架构文档保护起来” → `keel_ref_add`（按需 verify）。
@@ -210,7 +224,7 @@ Keel 浓缩了两轮“综述 + 实验”研究（46 + 48 篇工作；384 轮受
 
 - Keel 守护**主题，不守护过程**。需要交付物具体度保证时，交给你的 plan/build 工作流，并用 `keel_ref_add` 保护其产物。
 - 同意的意义以你的注意力为限——但没有流水线可盖章：要么你被请求十二个字，要么你明确选择了关。
-- 单一设计权威：不支持多 agent 并发主写同一 DATUM。
+- 单一设计权威：Keel 不支持多 agent 并发主写同一笔记本——相近时间的多会话由 confirm 时的防覆盖检查串行化（第二个提案被拒后按当前内容重提）。
 - 无自主演化：Keel 从不运行无人值守的设计变更循环。
 
 ## 开发
@@ -220,4 +234,4 @@ node tests/hostcompat.js   # 打包 vs 宿主契约门禁
 node tests/smoke.js        # 端到端：draft → 声明激活 → 同意 → 开关翻转 → 保护引用 → 维护
 ```
 
-仓库结构：`.claude-plugin/`（插件+市场清单）· `mcp/server.js`（server v2）· `skills/keel/`（主技能 + `references/notebook.md`、`references/steward.md`）· `skills/keel-stress-test|keel-alternatives|keel-relax-probe|keel-skeleton/`（迭代子技能）· `templates/`（DATUM / AMENDMENTS）· `hooks/`（会话自举 + 确认后刷新）· `docs/PROTOCOL.md`（规范）· `docs/MENTAL-MODEL.md`（系统自身的心智模型）· `tests/`（hostcompat + smoke）。
+仓库结构：`.claude-plugin/`（插件+市场清单）· `mcp/server.js`（server）· `skills/keel/`（主技能 + `references/notebook.md`、`references/steward.md`）· `skills/keel-stress-test|keel-alternatives|keel-relax-probe|keel-skeleton/`（迭代子技能）· `templates/`（DATUM / PAGE / TERMS / INDEX / AMENDMENTS）· `hooks/`（会话自举 + 确认后刷新）· `adapters/codex/` · `docs/PROTOCOL.md`（规范）· `docs/MENTAL-MODEL.md`（系统自身的心智模型）· `tests/`（hostcompat + smoke）。
