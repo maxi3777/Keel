@@ -5,7 +5,7 @@ description: Assumption stress-test — attack the stated assumptions of a desig
 
 # Assumption stress-test (Keel iteration tool)
 
-1. **Collect the assumptions**: from the conversation, and — if `.keel/DATUM.md` exists — from 01 of the DATUM (lines tagged `[assumption]`, plus anything the design silently depends on) via `keel_read`.
+1. **Collect the assumptions**: from the conversation, and — if `.keel/DATUM.md` exists — from 01 of the DATUM (lines tagged `[assumption]`, plus anything the design silently depends on); the file is plain markdown, read it directly.
 2. **Declare the prediction first**: for each assumption, state before testing what breaks and in which scenario if it is wrong. Never test first and predict after.
 3. **Attack each** with the strongest realistic counter-scenario: scale (10×, 100×), time (aging, deadlines, clock/timezone behavior), adversarial users, concurrency, resource limits, empty/full edge states.
 4. **Record predicted vs actual**: which assumptions fell, which held, which you could not decide.

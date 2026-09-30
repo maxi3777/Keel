@@ -8,8 +8,8 @@
     {
       "name": "keel",
       "source": "./",
-      "description": "The AI's authoritative notebook: a guarded DATUM of requirements and concept model, consent-tiered amendments, and the glance habit against cross-session drift.",
-      "version": "2.1.0",
+      "description": "The AI's authoritative notebook: a guarded DATUM of requirements, decisions, invariants and the concept model, consent-tiered amendments, and the match-don't-bulk-read glance against cross-session drift.",
+      "version": "2.2.0",
       "skills": ["./skills/keel"]
     }
   ]

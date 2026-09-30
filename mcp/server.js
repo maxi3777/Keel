@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * Keel MCP server v2.1.0 — zero-dependency, stdio JSON-RPC (MCP).
+ * Keel MCP server v2.2.0 — zero-dependency, stdio JSON-RPC (MCP).
  *
  * Doctrine: Keel is the AI's authoritative NOTEBOOK — it records the
  * requirements (00), the concept model with weighted principles (01),
@@ -22,9 +22,12 @@
  *
  * Numeric gates are deliberately absent from the write path: the only
  * mechanical requirements are presence checks (a summary, a rationale for
- * core, consent evidence, an exemption reason) and the line formats the
- * parser depends on. Quality is governed by the skill's lifespan-clarity
- * rule, not by counters.
+ * core, consent evidence, an exemption reason), the line formats the
+ * parser depends on, and a well-formedness check on mermaid blocks
+ * (fence/bracket/quote balance — syntax only, never semantics). Quality
+ * is governed by the skill's lifespan-clarity rule, not by counters.
+ * Reads are never gated: the notebook files are plain markdown and may
+ * be read directly; keel_digest is the map, not the gate.
  *
  * Mechanical duties (never delegated to the model): file creation, DATUM /
  * AMENDMENTS writes with structural validation, append-only amendment log,
@@ -38,7 +41,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const VERSION = '2.1.0';
+const VERSION = '2.2.0';
 
 const SECTIONS = [
   { id: '00', key: 'intent',   title: '00 Intent' },
@@ -56,12 +59,53 @@ function lastTableRowIndex(lines) {
   return last;
 }
 
+// Well-formedness check for mermaid blocks in DATUM content: fence closure,
+// bracket and double-quote balance per block. Syntax only — it never judges
+// what the diagram means, and it is deliberately conservative (lines starting
+// with %% are mermaid comments and are skipped).
+function lintMermaid(text) {
+  const problems = [];
+  const lines = String(text).split(/\r?\n/);
+  let inBlock = false, blockNo = 0, startLine = 0;
+  let paren = 0, brack = 0, brace = 0, quotes = 0;
+  const flush = () => {
+    const unbalanced = [];
+    if (paren) unbalanced.push('()');
+    if (brack) unbalanced.push('[]');
+    if (brace) unbalanced.push('{}');
+    if (quotes % 2) unbalanced.push('"');
+    if (unbalanced.length) problems.push(`mermaid block ${blockNo} (opening fence at line ${startLine + 1}): unbalanced ${unbalanced.join(' ')}.`);
+  };
+  for (let i = 0; i < lines.length; i++) {
+    const ln = lines[i];
+    const fence = ln.trim().match(/^```([A-Za-z]*)\s*$/);
+    if (!inBlock && fence && fence[1] === 'mermaid') {
+      inBlock = true; blockNo += 1; startLine = i;
+      paren = brack = brace = quotes = 0;
+      continue;
+    }
+    if (inBlock && fence && fence[1] === '') { flush(); inBlock = false; continue; }
+    if (inBlock && !ln.trim().startsWith('%%')) {
+      for (const ch of ln) {
+        if (ch === '"') quotes += 1;
+        else if (ch === '(') paren += 1;
+        else if (ch === ')') paren -= 1;
+        else if (ch === '[') brack += 1;
+        else if (ch === ']') brack -= 1;
+        else if (ch === '{') brace += 1;
+        else if (ch === '}') brace -= 1;
+      }
+    }
+  }
+  if (inBlock) problems.push(`mermaid block ${blockNo} (opening fence at line ${startLine + 1}): the closing \`\`\` fence is missing.`);
+  return problems;
+}
+
 function makeKeel(root) {
   const dir = path.join(root, '.keel');
   const datumPath = path.join(dir, 'DATUM.md');
   const amendmentsPath = path.join(dir, 'AMENDMENTS.md');
   const statePath = path.join(dir, 'state.json');
-  const legacyTechPath = path.join(dir, 'TECHNICAL.md'); // v1 projects only
 
   const exists = () => fs.existsSync(datumPath);
   function requireInit() { if (!exists()) throw new Error('No .keel/DATUM.md in the current directory. Run keel_init first.'); }
@@ -69,8 +113,6 @@ function makeKeel(root) {
     let s = {};
     try { s = JSON.parse(fs.readFileSync(statePath, 'utf8')); } catch (_) { /* fresh or corrupt: conservative defaults */ }
     s = Object.assign({ phase: 'draft', consentMode: true, stewardMode: true, proposals: {}, seq: { proposal: 0, amendment: 0 }, coreCount: 0 }, s);
-    if (s.phase === 'concept') s.phase = 'draft';          // v1 migration
-    if (s.phase === 'tech' || s.phase === 'handoff') s.phase = 'authoritative';
     return s;
   }
   function writeState(s) { fs.writeFileSync(statePath, JSON.stringify(s, null, 2)); }
@@ -86,7 +128,7 @@ function makeKeel(root) {
     return {
       created: dir, files: ['DATUM.md', 'AMENDMENTS.md'], phase: 'draft',
       mode: notebook ? 'notebook (consent and steward stay off)' : 'guarded (switches default on at activation)',
-      next: 'Record the essentials in the user\'s own words: goal, out-of-scope and numbered requirements R* in 00, principles and the concept model in 01, load-bearing terms in G. Nothing is gated while draft. When you judge the notebook complete, declare it authoritative via keel_config {authoritative:true}.',
+      next: 'Record the essentials in the user\'s own words: goal, out-of-scope and numbered requirements R* in 00; principles, decisions (D*), the concept model (Entity/Flow/Invariant lines) and open questions in 01; load-bearing terms in G. Nothing is gated while draft. When you judge the notebook complete, declare it authoritative via keel_config {authoritative:true}.',
     };
   }
 
@@ -237,12 +279,21 @@ function makeKeel(root) {
       if (/^##\s/m.test(e.content)) {
         throw new Error(`Section content for "${e.section}" must not contain "## " headings — "##" is reserved for section boundaries and would split the section during parsing. Use "###" or lower inside sections.`);
       }
+      for (const p of lintMermaid(e.content)) {
+        throw new Error(`${p} Fix the block or remove the mermaid fence. (Well-formedness only — what the diagram says stays yours.)`);
+      }
     }
     if (!summary || typeof summary !== 'string' || !summary.trim()) throw new Error('summary is required: a one-line description of the change.');
     if (level !== 'core' && level !== 'peripheral') throw new Error('level must be "core" or "peripheral".');
 
     const closure = new Set();
     for (const e of list) scanRefs(e.section, e.content).forEach(r => closure.add(r));
+    // Whole-table rewriters (glossary row, refs row) rescan EVERY row; the
+    // ripple of such a change is only what the touched row itself carries.
+    if (opts && Array.isArray(opts.closure)) {
+      closure.clear();
+      for (const r of opts.closure) if (r) closure.add(String(r).trim());
+    }
     let effLevel = level;
     if (level === 'peripheral' && closure.size) effLevel = 'core-escalated';
 
@@ -348,7 +399,7 @@ function makeKeel(root) {
       summary: `Term "${term}" ${replaced ? 'updated' : 'registered'}`,
       rationale: `Load-bearing at: ${load_bearing.join('; ') || '(none declared — treated as peripheral)'}`,
       position: 'G Glossary',
-    });
+    }, { closure: load_bearing.filter(r => CORE_REF.test(String(r).trim())) });
   }
 
   // ---------- Protected references ----------
@@ -358,7 +409,7 @@ function makeKeel(root) {
   function refAdd(args) {
     requireInit();
     const { path: rel, carries = [], label = '' } = args;
-    if (!rel || !Array.isArray(carries) || !carries.length) throw new Error('path and a non-empty carries array are required.');
+    if (!rel || !Array.isArray(carries)) throw new Error('path is required (relative to the project root); carries is optional — the core claims this document renders, if any.');
     if (String(rel).includes('|') || carries.some(c => String(c).includes('|'))) throw new Error('path and carries must not contain "|" — it breaks the table row.');
     const abs = path.resolve(root, rel);
     if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) throw new Error(`File not found (relative to project root): ${rel}`);
@@ -371,9 +422,9 @@ function makeKeel(root) {
     lines.splice(lastTableRowIndex(lines) + 1, 0, row);
     return propose({
       section: 'refs', content: lines.join('\n'), level: 'core',
-      summary: `Protected reference ${id} → ${rel}`, rationale: `Extends the protection boundary; carries: ${carries.join('; ')}`,
+      summary: `Protected reference ${id} → ${rel}`, rationale: `Extends the protection boundary${carries.length ? `; carries: ${carries.join('; ')}` : ' (tamper-evidence only; carries nothing core)'}`,
       position: 'R Protected References',
-    }, { viaRefTool: true });
+    }, { viaRefTool: true, closure: carries.filter(c => CORE_REF.test(String(c).trim())) });
   }
   function refRemove(args) {
     requireInit();
@@ -387,7 +438,7 @@ function makeKeel(root) {
       section: 'refs', content: head.concat(kept).join('\n'), level: 'core',
       summary: `Protected reference ${ref} removed`, rationale: `Protection boundary shrinks; path was ${hit[1]}`,
       position: 'R Protected References',
-    }, { viaRefTool: true });
+    }, { viaRefTool: true, closure: (hit[2] || '').split(/[,，;；]\s*/).filter(c => CORE_REF.test(c)) });
   }
   function refsVerify() {
     requireInit();
@@ -417,7 +468,7 @@ function makeKeel(root) {
       summary: `Removed ${orphans.length} orphan ## block(s): ${orphans.map(o => o.title).slice(0, 5).join('; ')}`,
       consent: 'batch-notified',
     });
-    return { removed: orphans.length, titles: orphans.map(o => o.title), amendment: n, note: 'Removed blocks (e.g. legacy 02/03 sections from v1) are gone from DATUM — archive their content elsewhere first if it matters.' };
+    return { removed: orphans.length, titles: orphans.map(o => o.title), amendment: n, note: 'Removed blocks are gone from DATUM — archive their content elsewhere first if it matters.' };
   }
 
   // ---------- Compaction / exemption / health / config ----------
@@ -512,14 +563,17 @@ function makeKeel(root) {
       ? 'phase=draft (not yet declared authoritative — consent and steward inactive; write freely; declare via keel_config {authoritative:true})'
       : `phase=authoritative · consent=${st.consentMode ? 'on' : 'off'} · steward=${st.stewardMode ? 'on' : 'off'}`;
     const L = [
-      '[Keel] Authoritative design notebook: .keel/DATUM.md (project root). Live state is in the file; read via keel_read / keel_digest, write only via keel_* tools (MCP server "keel"). Below is a verbatim snapshot.',
+      '[Keel] Authoritative design notebook: .keel/DATUM.md (project root). The notebook files are plain markdown — read them directly anytime; write only via keel_* tools (MCP server "keel"). Below is a verbatim mechanical excerpt.',
       `[Keel] ${mode}  (mechanical excerpt — verbatim, not AI-paraphrased)`,
     ];
     for (const ln of (getSection('intent') || '').split(/\r?\n/)) {
       if (/^-\s*(Goal \(one sentence\)|Out of scope|Success criteria):/.test(ln) && filled(ln)) L.push(ln.trim());
       if (/^- Requirement R\d+:/.test(ln) && filled(ln)) L.push(ln.trim());
     }
-    for (const ln of (getSection('concept') || '').split(/\r?\n/)) if (/^- P\d+/.test(ln) && filled(ln)) L.push(ln.trim());
+    for (const ln of (getSection('concept') || '').split(/\r?\n/)) {
+      if (/^- P\d+/.test(ln) && filled(ln)) L.push(ln.trim());
+      if (/^- (Invariant|Decision D\d+):/.test(ln) && filled(ln)) L.push(ln.trim());
+    }
     for (const g of parseGlossaryRows().slice(0, 6)) L.push(`Term ${g.term} = ${g.def} (load-bearing: ${g.load})`);
     for (const p of parseRefs().slice(0, 6)) L.push(`Protected ref ${p.ref} → ${p.path} (carries: ${p.carries.join(', ')})`);
     const rows = parseAmendments();
@@ -527,7 +581,7 @@ function makeKeel(root) {
       L.push('Recent amendments:');
       for (const r of rows.slice(-3)) L.push(`  #${r.n} [${r.level}] ${r.position} — ${r.summary}`);
     }
-    L.push('[Keel] Habit: after you finish a plan and before implementing, check it against this notebook. Conflicts or disagreements → propose an amendment (or record an exemption with the user) — silent divergence is forbidden.');
+    L.push('[Keel] Habit: after you finish a plan and before implementing, check it against this notebook. Match, do not bulk-read: state which requirements/principles/invariants/decisions the plan touches. Zero matches → say so in one line and proceed. Conflicts or disagreements → propose an amendment (or record an exemption with the user) — silent divergence is forbidden.');
     return L.join('\n');
   }
   function status() {
@@ -546,7 +600,6 @@ function makeKeel(root) {
       },
       ...health(),
     };
-    if (fs.existsSync(legacyTechPath)) out.legacy = ['TECHNICAL.md (v1 layout) — now an ordinary unprotected file; admit via keel_ref_add, archive, or delete.'];
     return out;
   }
 
@@ -562,15 +615,13 @@ function makeKeel(root) {
 const TOOLS = [
   { name: 'keel_init', description: 'Create .keel/ in the current project (DATUM.md guarded notebook + AMENDMENTS.md log + state.json + archive/). project = display name in the DATUM title; notebook:true builds a pure-notebook project (consent and steward stay off). Starts in draft phase: all writes apply immediately.',
     inputSchema: { type: 'object', properties: { project: { type: 'string' }, notebook: { type: 'boolean' } }, required: ['project'] } },
-  { name: 'keel_digest', description: 'Mechanical excerpt (verbatim slicing, not AI paraphrase): doc pointer, mode line (phase + switches), goal/out-of-scope/requirements/P*, top terms/protected refs, recent amendments, glance reminder.',
+  { name: 'keel_digest', description: 'Mechanical excerpt (verbatim slicing, not AI paraphrase): doc pointer, mode line (phase + switches), goal/out-of-scope/requirements/P*/invariants/decisions, top terms/protected refs, recent amendments, match-don\'t-bulk-read reminder. The notebook files themselves are plain markdown — read them directly; this is the map.',
     inputSchema: { type: 'object', properties: {} } },
   { name: 'keel_status', description: 'Phase, mode switches (configured + effective), section counts, pending proposals, health summary (incl. the oscillation reference metric).',
     inputSchema: { type: 'object', properties: {} } },
-  { name: 'keel_read', description: 'Read one section verbatim: intent / glossary / concept / refs.',
-    inputSchema: { type: 'object', properties: { section: { type: 'string', enum: ['intent', 'glossary', 'concept', 'refs'] } }, required: ['section'] } },
-  { name: 'keel_ripple', description: 'Traceability closure: given P* ids or glossary terms, mechanically compute the core references touched and the protected references now suspected stale.',
+  { name: 'keel_ripple', description: 'Traceability closure: given P*/R*/D* ids or glossary terms, mechanically compute the core references touched and the protected references now suspected stale.',
     inputSchema: { type: 'object', properties: { targets: { type: 'array', items: { type: 'string' } } }, required: ['targets'] } },
-  { name: 'keel_write_section', description: 'Write DATUM sections. content replaces the ENTIRE section — keel_read it first and merge your change in. Pass section+content for a single write, or sections:[{section, content}] to batch one logical change — one amendment row (and one consent, when active) covers the whole batch. Core tier is staged pending consent while the document is authoritative and consent is ON; otherwise everything applies immediately and is logged (ai-managed). Peripheral writes whose traceability closure touches core are auto-escalated. The refs table is not writable here — use keel_ref_add / keel_ref_remove.',
+  { name: 'keel_write_section', description: 'Write DATUM sections. content replaces the ENTIRE section — Read the DATUM first (plain markdown) and merge your change in. Pass section+content for a single write, or sections:[{section, content}] to batch one logical change — one amendment row (and one consent, when active) covers the whole batch. Core tier is staged pending consent while the document is authoritative and consent is ON; otherwise everything applies immediately and is logged (ai-managed). Peripheral writes whose traceability closure touches core are auto-escalated. The refs table is not writable here — use keel_ref_add / keel_ref_remove. mermaid blocks are syntax-checked (fence/bracket/quote balance) — well-formedness only.',
     inputSchema: { type: 'object', properties: {
       section: { type: 'string', enum: ['intent', 'glossary', 'concept', 'refs'] },
       content: { type: 'string' },
@@ -593,7 +644,7 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: { ref: { type: 'string' } }, required: ['ref'] } },
   { name: 'keel_refs_verify', description: 'Re-hash every active protected reference and report matches/mismatches. Tamper-evidence only — never blocks; regenerate or re-admit after intentional changes.',
     inputSchema: { type: 'object', properties: {} } },
-  { name: 'keel_clean', description: 'Maintenance: remove orphan "## " blocks from DATUM.md that no tool can reach (historical misplacements, legacy v1 sections). Keyed sections and the preamble are untouched; logged as a maintenance amendment.',
+  { name: 'keel_clean', description: 'Maintenance: remove orphan "## " blocks from DATUM.md that no tool can reach (misplaced headings). Keyed sections and the preamble are untouched; logged as a maintenance amendment.',
     inputSchema: { type: 'object', properties: {} } },
   { name: 'keel_compact', description: 'Compact the amendment log: the AI provides merged summary entries, the server archives the raw log verbatim (never deleted). Refuses below 5 entries.',
     inputSchema: { type: 'object', properties: { entries: { type: 'array', items: { type: 'object', properties: { position: { type: 'string' }, summary: { type: 'string' } }, required: ['position', 'summary'] } } }, required: ['entries'] } },
@@ -607,10 +658,6 @@ function startStdio() {
     keel_init: a => keel.init(a.project, a.notebook),
     keel_digest: () => keel.digestText(),
     keel_status: () => keel.status(),
-    keel_read: a => {
-      if (!keel.exists()) throw new Error('No .keel/DATUM.md in the current directory. Run keel_init first.');
-      return keel.getSection(a.section) || '(empty)';
-    },
     keel_ripple: a => keel.ripple(a.targets),
     keel_write_section: a => keel.propose(a),
     keel_confirm: a => keel.confirm(a),
@@ -671,4 +718,4 @@ function startStdio() {
 }
 
 if (require.main === module) startStdio();
-module.exports = { makeKeel, SECTIONS, VERSION };
+module.exports = { makeKeel, SECTIONS, TOOLS, VERSION };

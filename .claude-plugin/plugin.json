@@ -1,7 +1,7 @@
 {
   "name": "keel",
-  "version": "2.1.0",
-  "description": "Keel: the AI's authoritative notebook — a guarded DATUM of requirements and concept model, consent-tiered amendments with audit evidence, hash-pinned protected references, and the glance habit that keeps design from drifting across sessions",
+  "version": "2.2.0",
+  "description": "Keel: the AI's authoritative notebook — a guarded DATUM of requirements, decisions, invariants and the concept model, consent-tiered amendments with audit evidence, hash-pinned protected references, free reads with an injected digest map, and the match-don't-bulk-read glance that keeps design from drifting across sessions",
   "author": { "name": "maxi3777" },
   "homepage": "https://github.com/maxi3777/Keel",
   "repository": "https://github.com/maxi3777/Keel"

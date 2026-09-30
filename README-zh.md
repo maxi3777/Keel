@@ -8,9 +8,7 @@ Keel 是面向 AI 辅助编程宿主（Claude Code、ZCode 及其它 MCP 兼容 
 
 **English docs: [README.md](README.md)。**
 
-> **v2 是破坏性重设计。** Keel 不再主导设计流程（CONCEPT→TECH→HANDOFF 流水线、门禁、交付打包全部移除）。它现在是一个笔记本：AI 自由思考、自由做计划，做完计划、动手实施之前看一眼 DATUM。旧项目迁移见文末。
->
-> **v2.1** 在同一方向上更进一步：删除了全部数值写入门禁与机械就绪检查——剩下的机械要求只有"存在性必填"和解析所依赖的行格式。激活改为 AI 的显式单向声明（`keel_config {authoritative:true}`），质量标准交给**全生命周期清晰度规则**：写进文档的每一行都必须在任意后续会话中脱离当前对话语境仍可读懂。
+> Keel 不主导任何工作流。AI 自由思考、自由计划；唯一的仪式是"看一眼"——做完计划、动手之前，把计划对照笔记本检查（**匹配式，不整本读；零匹配 → 一句话声明后照常执行**）。所有数值写入门禁均不存在：server 只做存在性必填、解析所需的行格式与 mermaid 良构检查；质量交给**全生命周期清晰度规则**——写进文档的每一行都必须在任意后续会话中脱离当前对话语境仍可读懂。
 
 ---
 
@@ -39,14 +37,15 @@ Keel 的回答刻意做得很小：一份权威文档（**DATUM**）装着需求
 
 ```
 .keel/
-├─ DATUM.md       笔记本本体：00 Intent（目标/范围/编号需求）
-│                 · G Glossary（承重术语）· 01 Concept（加权原则 P1..Pn——顺序即优先级——
-│                 + 概念模型 + 停车场）· R Protected References（默认 id REF1..）
+├─ DATUM.md       笔记本本体（纯 markdown，自由读取）：00 Intent（目标 / 范围含理由 /
+│                 编号需求 R*）· G Glossary（承重术语）· 01 Concept（加权原则
+│                 P1..Pn——顺序即优先级——· 决策 D* · Entity/Flow/Invariant 行式
+│                 概念模型 · 未决问题）· R Protected References（默认 id REF1..）
 ├─ AMENDMENTS.md  只追加的历史：改了什么、何时、经谁的同意；压缩后归档（永不删除）
 └─ archive/ · state.json
 ```
 
-高度契约与 v1 相同：DATUM 的收录判据是*非降级性*——只记录设计层事实；什么都想守护的文档会腐烂并失去权威。
+高度契约：DATUM 的收录判据是*非降级性*——只记录设计层事实；什么都想守护的文档会腐烂并失去权威。
 
 ### 模式：draft → authoritative，加两个开关
 
@@ -66,14 +65,14 @@ authoritative:  consent  开（默认）—— 核心写入暂存，等用户同
 
 ### “看一眼”习惯（v2 的心脏）
 
-agent 做完计划、动手实施之前，把计划对照 DATUM 检查一遍——目标、范围、需求、原则、概念模型。结果：无冲突 → 继续；有冲突 → 修正 / 放弃 / 显式豁免；**对 DATUM 本身有异议 → 提出修正案**（笔记本是权威的，不是神圣的）。steward 开启时，“看一眼”升级为结构化检查（`keel_ripple`、stale refs、扩围提案）；关闭时就是普通一瞥。
+agent 做完计划、动手实施之前，把计划对照 digest 检查——目标、范围、需求、原则、不变量、决策——**点名计划触及什么**（匹配式，不整本读；与笔记本可证无关的计划只需一句”零匹配”）。结果：无冲突 → 继续；有冲突 → 修正 / 放弃 / 显式豁免；**对 DATUM 本身有异议 → 提出修正案**（笔记本是权威的，不是神圣的）。steward 开启时，”看一眼”升级为结构化检查（`keel_ripple`、stale refs、扩围提案）；关闭时就是普通一瞥。
 
 时机是刻意选的：检查发生在*计划完成之后*，所以它从不约束 agent 怎么想——只约束它承诺什么。
 
 ### 同意分层（consent 开启时）
 
 - **核心**（00/01 内容、承重术语、保护引用）：展示理由 + 波及 → 你的明确同意 → server 落盘，你的同意原话存为审计证据。
-- **外围**（停车场笔记等非核心内容）：立即落盘，批量告知。
+- **外围**（未决问题笔记等非核心内容）：立即落盘，批量告知。
 - 哪个算核心由 **server 机械计算**（traceability closure），不是 AI 的判断。暂存提案在 confirm 时若发现底层内容已变会被拒绝（防覆盖）；跨段的一次逻辑变更 = 一次批量提案：一次同意、一行审计。
 
 ### 保护引用
@@ -97,11 +96,11 @@ agent 做完计划、动手实施之前，把计划对照 DATUM 检查一遍—�
 
 “常驻”具体是三件事：
 
-1. **SessionStart hook**（机械）。工作目录存在 `.keel/DATUM.md` 时，hook 以严格 JSON `additionalContext` 注入笔记本的*原文切片*——文档指针打头，随后是模式行（阶段+开关）、目标/范围/需求、原则、前几条术语/保护引用、最近修正。不是 AI 摘要，是代码切的。**PostToolUse hook** 在每次同意落盘后刷新注入。
+1. **SessionStart hook**（机械）。工作目录存在 `.keel/DATUM.md` 时，hook 以严格 JSON `additionalContext` 注入笔记本的*原文切片*——文档指针打头，随后是模式行（阶段+开关）、目标/范围/需求、原则、不变量、决策、前几条术语/保护引用、最近修正。不是 AI 摘要，是代码切的。**PostToolUse hook** 在每次同意落盘后刷新注入。Codex 适配器把同样的 hooks 注册进 `~/.codex/hooks.json`；无 hook 宿主上，技能自行在会话开始与确认后调 `keel_digest`。
 2. **技能触发**（行为）。主技能的描述在“用户提到 Keel”**或** `.keel/DATUM.md` 存在”时加载协议——没人提 keel 的会话里，“看一眼”的习惯照样生效。
 3. **MCP server**（机械兜底）。DATUM 写入只走 server；consent 开启时核心变更暂存到用户同意为止。经支持路径的静默漂移不可能不留痕。
 
-无 hook 宿主（Codex）上，技能自行在会话开始与确认后调 `keel_digest`。
+无 hook 宿主上，技能自行在会话开始与确认后调 `keel_digest`。
 
 ## 一个例子
 
@@ -126,7 +125,7 @@ claude plugin marketplace add maxi3777/Keel
 claude plugin install keel@keel-marketplace
 ```
 
-交互会话里同样的两步是斜杠命令：`/plugin marketplace add maxi3777/Keel`，然后 `/plugin install keel@keel-marketplace`。安装即注册 MCP server（`.mcp.json` → `node ${CLAUDE_PLUGIN_ROOT}/mcp/server.js`）、五个技能（主技能 + 四个迭代工具）、SessionStart hook。日后更新：更新市场后重装，或添加时钉住版本（`maxi3777/Keel@v2.1.0`）。
+交互会话里同样的两步是斜杠命令：`/plugin marketplace add maxi3777/Keel`，然后 `/plugin install keel@keel-marketplace`。安装即注册 MCP server（`.mcp.json` → `node ${CLAUDE_PLUGIN_ROOT}/mcp/server.js`）、五个技能（主技能 + 四个迭代工具）、SessionStart 与 PostToolUse hooks。日后更新：更新市场后重装，或添加时钉住版本（`maxi3777/Keel@v2.2.0`）。
 
 克隆验证（可选）：
 
@@ -142,7 +141,7 @@ node Keel/tests/smoke.js        # 期望：SMOKE PASS
 node adapters/codex/install.js     # --uninstall 卸载
 ```
 
-复制全部五个技能到 `~/.codex/skills/`，并向 `~/.codex/config.toml` 追加 `[mcp_servers.keel]`。Codex 无会话 hook，按文档化回退执行（agent 自行调 `keel_digest`）。已在 codex-cli 0.153.4 上端到端验证。
+复制全部五个技能到 `~/.codex/skills/`，向 `~/.codex/config.toml` 追加 `[mcp_servers.keel]`，并把 SessionStart/PostToolUse hooks 注册进 `~/.codex/hooks.json`（载荷与输出契约与插件 hooks 相同）。**一次性步骤**：在 Codex 里经 `/hooks` 审阅并信任这些 hooks——未受信任的 hook 定义会被静默跳过。若 hooks 被禁用（`[features] hooks = false`），按文档化回退执行。已在 codex-cli 0.153.4 上端到端验证。
 
 ### 其它 MCP 兼容宿主（手动接线）
 
@@ -172,6 +171,7 @@ node adapters/codex/install.js     # --uninstall 卸载
 - **保护文档** —— “把这个架构文档保护起来” → `keel_ref_add`（按需 verify）。
 - **查看状态** —— “keel 状态怎么样” → `keel_status`（阶段、开关、计数、待定提案、批量告知、健康度）。
 - **维护** —— 审计日志过长时 `keel_status` 会提示；agent 执行压缩（原始日志逐字归档，永不删除）。健康度报告双时钟核心修正计数（上次压缩以来——始终标注；终身——永不清零）与**振荡**计数——全部是*参考指标*，永不作阈值。
+- **定期对账**（推荐；触发式——大改之后、压缩之后、长期未开之后）—— 跑 `keel_refs_verify`，并让 agent 复查笔记本卫生：实体仍被引用、不变量仍能被冷启动会话检验、OPEN 行仍然未决。
 
 ## 强制是怎么落地的
 
@@ -209,13 +209,9 @@ Keel 浓缩了两轮“综述 + 实验”研究（46 + 48 篇工作；384 轮受
 ## 限制与非目标
 
 - Keel 守护**主题，不守护过程**。需要交付物具体度保证时，交给你的 plan/build 工作流，并用 `keel_ref_add` 保护其产物。
-- 同意的意义以你的注意力为限——但 v2 没有流水线可盖章：要么你被请求十二个字，要么你明确选择了关。
+- 同意的意义以你的注意力为限——但没有流水线可盖章：要么你被请求十二个字，要么你明确选择了关。
 - 单一设计权威：不支持多 agent 并发主写同一 DATUM。
 - 无自主演化：Keel 从不运行无人值守的设计变更循环。
-
-## 迁移（v1 → v2）
-
-旧 v1 项目的 00/G/01/R 读写照常。v1 `state.json` 自动映射（`concept`→draft，`tech`/`handoff`→authoritative）。`TECHNICAL.md` 与 DATUM 里的 02/03 段成为普通不受保护内容：内容重要就先另行归档；想保 `TECHNICAL.md` 的防篡改证据就 `keel_ref_add` 挂载；`keel_clean` 可剥掉孤儿段头（维护行只记标题不记正文——先归档）。完整规范见 [`docs/PROTOCOL.md`](docs/PROTOCOL.md)；全系统心智模型（总-分图）见 [`docs/MENTAL-MODEL.md`](docs/MENTAL-MODEL.md)。
 
 ## 开发
 

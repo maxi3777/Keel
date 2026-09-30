@@ -8,9 +8,7 @@ Keel is an agent plugin for AI-assisted coding hosts (Claude Code, ZCode, and ot
 
 **中文说明见 [README-zh.md](README-zh.md)。**
 
-> **v2 is a breaking redesign.** Keel no longer directs a design workflow (the CONCEPT→TECH→HANDOFF pipeline, gates, and handoff bundles are gone). It is now a notebook: the AI thinks and plans freely, and glances at the DATUM after planning, before implementing. See *Migration* at the end.
->
-> **v2.1** goes further on the same axis: every numeric write gate and the mechanical readiness check were removed — the only mechanical requirements left are presence checks and the parser's line formats. Activation is now the agent's explicit one-way declaration (`keel_config {authoritative:true}`), and quality is governed by a **lifespan-clarity rule**: every recorded line must be readable in any later session without the current conversation.
+> Keel directs no workflow. The AI thinks and plans freely; the only ritual is the glance — after planning, before implementing, check the plan against the notebook (**match, don't bulk-read; zero matches → say so and proceed**). Every numeric write gate is absent by design: the server enforces presence checks, the parser's line formats, and mermaid well-formedness; quality is governed by a **lifespan-clarity rule** — every recorded line must be readable in any later session without the current conversation.
 
 ---
 
@@ -39,16 +37,17 @@ unprotected                       everything else, including the AI's own workin
 
 ```
 .keel/
-├─ DATUM.md       the notebook: 00 Intent (goal / scope / numbered requirements)
-│                 · G Glossary (load-bearing terms) · 01 Concept (weighted principles
-│                 P1..Pn — order is priority — + concept model + parking lot)
-│                 · R Protected References (default ids REF1..)
+├─ DATUM.md       the notebook (plain markdown, free to read): 00 Intent (goal /
+│                 scope with reasons / numbered requirements R*) · G Glossary ·
+│                 01 Concept (weighted principles P1..Pn — order is priority —
+│                 · decisions D* · concept model as Entity/Flow/Invariant lines
+│                 · open questions) · R Protected References (default ids REF1..)
 ├─ AMENDMENTS.md  append-only history: what changed, when, with whose consent;
 │                 compacted into archive/ (never deleted)
 └─ archive/ · state.json
 ```
 
-The altitude contract is unchanged from v1: DATUM's membership criterion is *non-degradability*. It records design-level facts only; a document that tried to guard everything would rot and lose authority.
+The altitude contract: DATUM's membership criterion is *non-degradability*. It records design-level facts only; a document that tried to guard everything would rot and lose authority.
 
 ### Modes: draft → authoritative, and two switches
 
@@ -70,14 +69,14 @@ authoritative:  consent  ON (default) — core writes staged until you consent
 
 ### The glance habit (the heart of v2)
 
-After the agent finishes a plan and before implementing, it checks the plan against the DATUM — goal, scope, requirements, principles, concept model. Outcomes: no conflict → proceed; conflict → amend / drop / explicit exemption; **disagreement with the DATUM itself → propose an amendment** (the notebook is authoritative, not sacred). With steward ON this glance is a structured check (`keel_ripple`, stale refs, scope-growth proposals); with steward OFF it stays a plain glance.
+After the agent finishes a plan and before implementing, it checks the plan against the digest — goal, scope, requirements, principles, invariants, decisions — **naming what the plan touches** (match, don't bulk-read; a provably unrelated plan owes the notebook one line: "zero matches"). Outcomes: no conflict → proceed; conflict → amend / drop / explicit exemption; **disagreement with the DATUM itself → propose an amendment** (the notebook is authoritative, not sacred). With steward ON this glance is a structured check (`keel_ripple`, stale refs, scope-growth proposals); with steward OFF it stays a plain glance.
 
 The timing is deliberate: the check comes *after* planning, so it never constrains how the agent thinks — only what it commits to.
 
 ### Consent tiers (while consent is ON)
 
 - **Core** (00/01 content, load-bearing terms, protected references): show rationale + ripple → your explicit consent → the server applies it, storing your consenting words as audit evidence.
-- **Peripheral** (parking-lot notes and other non-core content): applied immediately, batch-reported.
+- **Peripheral** (open-question notes and other non-core content): applied immediately, batch-reported.
 - The server — not the AI's judgment — computes which is which, via traceability closure. A staged proposal is refused at confirm if its target changed underneath (anti-clobber), and one logical change across sections is one batched proposal: one consent, one audit row.
 
 ### Protected references
@@ -101,11 +100,11 @@ All four work with or without a DATUM (skeleton requires one), keep temp files o
 
 "Resident" means three concrete things, not one:
 
-1. **SessionStart hook** (mechanical). If `.keel/DATUM.md` exists in the working directory, the hook injects a *verbatim excerpt* of the notebook as hook JSON `additionalContext` — led by a document pointer, followed by the mode line (phase + switches), goal/scope/requirements, principles, top terms, protected refs, and recent amendments. Not an AI summary; sliced by code. A **PostToolUse hook** refreshes it after every applied consent.
+1. **SessionStart hook** (mechanical). If `.keel/DATUM.md` exists in the working directory, the hook injects a *verbatim excerpt* of the notebook as hook JSON `additionalContext` — led by a document pointer, followed by the mode line (phase + switches), goal/scope/requirements, principles, invariants, decisions, top terms, protected refs, and recent amendments. Not an AI summary; sliced by code. A **PostToolUse hook** refreshes it after every applied consent. The Codex adapter registers the same hooks in `~/.codex/hooks.json`; on hosts without hooks, the skill falls back to calling `keel_digest` itself.
 2. **Skill trigger** (behavioral). The main skill's description loads the protocol whenever the user mentions Keel *or* `.keel/DATUM.md` exists — so the glance habit engages even in sessions where nobody says "keel".
 3. **MCP server** (mechanical backstop). DATUM writes only go through the server; while consent is ON, core changes are staged until you consent. Divergence without a paper trail is not possible through the supported path.
 
-On hook-less hosts (Codex), the skill falls back to calling `keel_digest` at session start and after confirmations.
+On hosts without hooks, the skill falls back to calling `keel_digest` at session start and after confirmations.
 
 ## A worked example
 
@@ -132,7 +131,7 @@ claude plugin install keel@keel-marketplace
 
 Inside an interactive session the same steps are slash commands: `/plugin marketplace add maxi3777/Keel`, then `/plugin install keel@keel-marketplace`. (On hosts with a different command syntax the same two operations apply; the plugin name is `keel`.)
 
-Installing registers the MCP server (`.mcp.json` → `node ${CLAUDE_PLUGIN_ROOT}/mcp/server.js`), the five skills (main + four iteration tools), and the SessionStart hook. To update later: update the marketplace and reinstall, or pin a ref when adding (`maxi3777/Keel@v2.1.0`).
+Installing registers the MCP server (`.mcp.json` → `node ${CLAUDE_PLUGIN_ROOT}/mcp/server.js`), the five skills (main + four iteration tools), and the SessionStart + PostToolUse hooks. To update later: update the marketplace and reinstall, or pin a ref when adding (`maxi3777/Keel@v2.2.0`).
 
 Optionally, verify the mechanical layer end-to-end on a clone:
 
@@ -150,7 +149,7 @@ node Keel/tests/smoke.js        # expect: SMOKE PASS
 node adapters/codex/install.js     # --uninstall to remove
 ```
 
-Copies all five skills to `~/.codex/skills/` and appends `[mcp_servers.keel]` to `~/.codex/config.toml`. Codex has no session hooks; the documented fallback applies (the agent calls `keel_digest` itself). Validated end-to-end with codex-cli 0.153.4.
+Copies all five skills to `~/.codex/skills/`, appends `[mcp_servers.keel]` to `~/.codex/config.toml`, and registers the SessionStart/PostToolUse hooks in `~/.codex/hooks.json` (same payload and output contract as the plugin hooks). **One-time**: review the hooks via `/hooks` — Codex skips untrusted hook definitions. If hooks are disabled (`[features] hooks = false`), the documented fallback applies. Validated end-to-end with codex-cli 0.153.4.
 
 ### Other MCP-compatible hosts (manual wiring)
 
@@ -180,6 +179,7 @@ There are no slash subcommands. One skill, natural language:
 - **Protecting documents** — “把这个架构文档保护起来” → `keel_ref_add` (+ verify on demand).
 - **Checking in** — “keel 状态怎么样” → `keel_status` (phase, switches, counts, pending proposals, batch notifications, health).
 - **Maintenance** — when the amendment log grows, `keel_status` says so; the agent compacts it (raw log archived verbatim, never deleted). The health summary reports core-amendment counts on two clocks (since last compaction, always labeled; lifetime, never resets) plus an **oscillation** count — all *reference metrics*, never thresholds.
+- **Periodic audit** (recommended; trigger-based — after major rework, after a compaction, or after a long absence) — run `keel_refs_verify` and have the agent re-check notebook hygiene: entities still referenced, invariants still checkable by a cold session, OPEN lines still open.
 
 ## How enforcement actually works
 
@@ -216,14 +216,10 @@ Internal evidence that shaped the mechanics (not from papers): in the authors' 3
 
 ## Limitations and non-goals
 
-- Keel guards **the topic, not the process**. If you need guaranteed deliverable concreteness (v1's G2 bar), get it from your plan/build workflow and protect its output via `keel_ref_add`.
-- Consent is only as meaningful as your attention — but unlike v1 there is no phase pipeline to rubber-stamp; either you are asked for twelve words, or you have explicitly opted out.
+- Keel guards **the topic, not the process**. If you need guaranteed deliverable concreteness, get it from your plan/build workflow and protect its output via `keel_ref_add`.
+- Consent is only as meaningful as your attention — but there is no phase pipeline to rubber-stamp: either you are asked for twelve words, or you have explicitly opted out.
 - Single design authority: Keel does not handle multiple agents concurrently authoring one DATUM.
 - No autonomous evolution: Keel never runs unattended loops that mutate the design.
-
-## Migration (v1 → v2)
-
-Existing v1 projects keep working for reads and writes to 00/G/01/R. A v1 `state.json` maps automatically (`concept` → draft, `tech`/`handoff` → authoritative). `TECHNICAL.md` and the 02/03 DATUM sections become ordinary unprotected content: archive them elsewhere if the content matters, admit `TECHNICAL.md` via `keel_ref_add` to keep it tamper-evidenced, and `keel_clean` can strip the orphan section headers (the maintenance row records titles, not bodies — archive first). The full specification is in [`docs/PROTOCOL.md`](docs/PROTOCOL.md); the whole-system mental model (master/detail diagrams) is in [`docs/MENTAL-MODEL.md`](docs/MENTAL-MODEL.md).
 
 ## Development
 

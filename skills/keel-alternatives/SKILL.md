@@ -5,7 +5,7 @@ description: Alternative insight generation — produce 2–3 genuinely differen
 
 # Alternative insight generation (Keel iteration tool)
 
-1. **Fix the shared facts first**: requirements and binding constraints, from the conversation and — if a DATUM exists — from 00 via `keel_read`. All alternatives must share the same facts; only the resolution forks.
+1. **Fix the shared facts first**: requirements and binding constraints, from the conversation and — if a DATUM exists — from its 00 (plain markdown, read it directly). All alternatives must share the same facts; only the resolution forks.
 2. **Declare the prediction first**: which conflict between requirements or constraints each candidate claims to resolve better, stated before any detailed design.
 3. **Generate 2–3 candidates that differ in mechanism, not wording**. Mark the fork point explicitly (the step where the routes genuinely diverge).
 4. **After drafting, judge each candidate's real strengths against the prediction**; recommend one, with the cost of choosing wrong stated plainly.

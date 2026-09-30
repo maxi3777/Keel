@@ -5,7 +5,7 @@ description: Skeleton test — rebuild the concept model from the requirements a
 
 # Skeleton test (Keel iteration tool)
 
-1. **Inputs, strictly limited**: 00 (goal + requirements) and the P* lines of 01 ONLY — via `keel_read`. Do not read the concept model itself.
+1. **Inputs, strictly limited**: 00 (goal + requirements) and the P* lines of 01 ONLY — read the DATUM file directly and take nothing else from it. Do not read the concept model itself.
 2. **Rebuild**: entities, flows, invariants — as a reader who knows nothing else about the project.
 3. **Evidence quality**: prefer a true fresh-process rebuild where a shell and a host CLI exist — e.g. `codex exec --ephemeral "<00 + P* verbatim> — rebuild the concept model"` (or the host's headless equivalent) — and label the result `external (fresh process)`. Self-simulation only where no such facility exists, labeled `self-simulated (no subagent facility)`, with the user told this check is weakened.
 4. **Diff against the recorded concept model**: coverage = the share of recorded entities / flows / invariants the rebuild recovers, plus any contradictions found. Zero contradictions is the bar (a contradiction is a finding, not a style issue); coverage below roughly half means the principles are decoration.

@@ -1,9 +1,7 @@
 #!/usr/bin/env node
 /* Keel host-compatibility gate: mechanically checks the plugin packaging
  * against the portable intersection of host behavior (ZCode + Claude Code).
- * Added after v1.2.1, where three packaging assumptions broke the plugin on
- * ZCode (bare relative MCP arg, shell-style $VAR in hooks, plain-text hook
- * stdout). Run before every release, together with the smoke test:
+ * Run before every release, together with the smoke test:
  *
  *   node tests/hostcompat.js && node tests/smoke.js
  *

@@ -27,7 +27,9 @@ function run() {
   if (done) return;
   done = true;
   try {
-    const keel = makeKeel(process.cwd());
+    const msg = input ? JSON.parse(input) : null;
+    const cwd = (msg && typeof msg.cwd === 'string' && msg.cwd) || process.cwd();
+    const keel = makeKeel(cwd);
     if (keel.exists()) {
       const text = keel.digestText();
       if (text) {

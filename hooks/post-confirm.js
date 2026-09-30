@@ -33,7 +33,8 @@ function run() {
     const msg = input ? JSON.parse(input) : null;
     const failed = msg && msg.tool_response && (msg.tool_response.isError || msg.tool_response.error);
     if (failed) return;
-    const keel = makeKeel(process.cwd());
+    const cwd = (msg && typeof msg.cwd === 'string' && msg.cwd) || process.cwd();
+    const keel = makeKeel(cwd);
     if (keel.exists()) {
       const text = keel.digestText();
       if (text) emitContext(text);
