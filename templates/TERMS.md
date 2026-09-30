@@ -10,5 +10,7 @@
      else = peripheral. When one word is used with two meanings, this table
      is the arbiter. -->
 
+## G Glossary
+
 | Term | Definition (one concept-level sentence) | Load-bearing in | Aliases | Status |
 |---|---|---|---|---|

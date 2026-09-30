@@ -356,8 +356,6 @@ function makeKeel(root) {
       if (e.section === 'amendments') throw new Error('The amendment log is server-owned; direct writes are forbidden.');
       const targetPage = e.section === 'glossary' ? 'terms' : page;
       if (!st0.pages[targetPage]) throw new Error(`Unknown page: ${targetPage} (known: ${pageNames(st0).join(', ')})`);
-      if (e.section === 'glossary' && page !== 'terms' && page !== 'root')
-        throw new Error('The glossary lives on the terms page only.');
       const key = targetPage + '/' + e.section;
       if (seen.has(key)) throw new Error(`Duplicate section in batch: ${targetPage} ${e.section}`);
       seen.add(key);
@@ -896,7 +894,7 @@ function makeKeel(root) {
 
 // ---------- MCP tool table ----------
 const TOOLS = [
-  { name: 'keel_init', description: 'Create .keel/ in the current project: root page DATUM.md + routing table INDEX.md + pages/terms.md (glossary) + AMENDMENTS.md + state.json. project = display name; notebook:true builds a pure-notebook project (consent and steward stay off). All pages start draft: writes apply immediately.',
+  { name: 'keel_init', description: 'Create .keel/ in the current project: root page DATUM.md + routing table INDEX.md + pages/terms.md (glossary) + AMENDMENTS.md + state.json. project = display name; notebook:true builds a pure-notebook project (consent and steward start off — flippable anytime). All pages start draft: writes apply immediately.',
     inputSchema: { type: 'object', properties: { project: { type: 'string' }, notebook: { type: 'boolean' } }, required: ['project'] } },
   { name: 'keel_digest', description: 'Mechanical excerpt (verbatim, not AI paraphrase): doc pointer, per-page phase line, root pins (goal/scope/requirements, P*, invariants, decisions), the INDEX routing table verbatim, protected refs, recent amendments, and the match-don\'t-bulk-read habit. The notebook files themselves are plain markdown — read them directly; this is the map.',
     inputSchema: { type: 'object', properties: {} } },
@@ -928,7 +926,7 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: { ref: { type: 'string' } }, required: ['ref'] } },
   { name: 'keel_refs_verify', description: 'Re-hash every active protected reference and report matches/mismatches. Tamper-evidence only — never blocks; regenerate or re-admit after intentional changes.',
     inputSchema: { type: 'object', properties: {} } },
-  { name: 'keel_page_add', description: 'Add a module page (pages/<name>.md, same altitude as the root, module-scoped: requirements in 00; concept model, decisions, open questions in 01; weighted principles stay on root). covers = what the page governs, in stable anchors (repo paths/globs, glossary terms, claim ids) — INDEX routes sessions by it. Core-tier while any page is authoritative.',
+  { name: 'keel_page_add', description: 'Add a module page (pages/<name>.md) — the same shape as the root page (a 00 and a 01), module-scoped: requirements in 00; concept model, decisions, open questions in 01; weighted principles stay on root. covers = what the page governs, in stable anchors (repo paths/globs, glossary terms, claim ids) — INDEX routes sessions by it. Core-tier while any page is authoritative.',
     inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'kebab-case, e.g. orders' }, covers: { type: 'array', items: { type: 'string' } } }, required: ['name', 'covers'] } },
   { name: 'keel_page_remove', description: 'Remove a module page (root and terms are structural and stay). Snapshots the page into archive/, drops its pending proposals, and reports glossary terms whose load-bearing refs just went dangling. Refuses while protected references still carry this page\'s ids.',
     inputSchema: { type: 'object', properties: { page: { type: 'string' } }, required: ['page'] } },
