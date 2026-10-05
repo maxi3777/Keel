@@ -25,6 +25,7 @@ unprotected                       everything else
 - `.keel/AMENDMENTS.md` — one global append-only log: `# / time / tier / location / summary / supersedes / consent` (Location carries page names). Consent values: `yes ("…")`, `batch-notified`, `ai-managed` (draft surfaces or consent OFF), `exempted`. Compacted into `archive/` (verbatim, never deleted).
 - `.keel/state.json` — per-page `phase`/`epoch` · `consentMode` · `stewardMode` · `proposals` (staged) · `seq` counters · `coreCount` (lifetime, survives compaction).
 - `.keel/archive/` — compaction snapshots, pre-reopen page snapshots, removed-page snapshots.
+- `.keel/tmp/` — transient scratch of the iteration sub-skills (created on demand, removed when done; not part of the guarded surface).
 
 **Claim ids** (`Requirement R-n`, `P-n`, `Decision D-n`) are globally unique across all pages; the server rejects collisions (a rewrite may keep its own page's ids). Single-module is just an INDEX with no module rows yet — no modes, no migration, ever.
 
@@ -84,7 +85,7 @@ Write-then-admit: the owning workflow edits freely; `keel_ref_add {path, carries
 
 ## 8. Iteration sub-skills (outside the main module)
 
-`keel-stress-test` (attack assumptions), `keel-alternatives` (2–3 genuinely different directions), `keel-relax-probe` (constraint relaxation cost/benefit), `keel-skeleton` (rebuild a page's concept model from its 00 + P\* alone; coverage = share of recorded entities/flows/invariants recovered, below ~half = decoration; fresh-process evidence preferred, self-simulation labeled). All four: declare the prediction first, record the deviation; work with or without a notebook (skeleton requires one); temp files live in the system temp dir and are deleted after; adopted findings return through the main module's write path, if a notebook exists.
+`keel-stress-test` (attack assumptions), `keel-alternatives` (2–3 genuinely different directions), `keel-relax-probe` (constraint relaxation cost/benefit), `keel-skeleton` (rebuild a page's concept model from its 00 + P\* alone; coverage = share of recorded entities/flows/invariants recovered, below ~half = decoration; fresh-process evidence preferred, self-simulation labeled). All four: declare the prediction first, record the deviation; work with or without a notebook (skeleton requires one); working notes live in `.keel/tmp/` when a notebook exists (created on demand, removed when done) and in the system temp dir otherwise; adopted findings return through the main module's write path, if a notebook exists, and stress-test findings that stay unresolved park as OPEN lines on the owning page.
 
 ## 9. Failure modes
 
@@ -92,4 +93,4 @@ Abandoned staging → visible in `keel_status`, discard with `keel_reject` · or
 
 ## 10. Research provenance
 
-See the references table in [`README.md`](../README.md) (14 papers with deliberate-difference notes) and the research summaries in the authors' archives. The core internal evidence remains: unstructured iteration collapsed in rounds 3–4 twice in 384-round controlled experiments; structured runs had zero collapses — hence mechanical enforcement over prompt discipline. The mechanical layer is *determinism duties only* (persistence, tiering, hashing, routing, audit); semantic judgments — completeness, quality — belong to the agent under the lifespan-clarity rule.
+See the reference list in [`README.md`](../README.md) (the works Keel's mechanisms actually trace to, with a note on what the surveyed corpus contributed by rejection) and the research summaries in the authors' archives. The core internal evidence remains: unstructured iteration collapsed in rounds 3–4 twice in 384-round controlled experiments; structured runs had zero collapses — hence mechanical enforcement over prompt discipline. The mechanical layer is *determinism duties only* (persistence, tiering, hashing, routing, audit); semantic judgments — completeness, quality — belong to the agent under the lifespan-clarity rule.

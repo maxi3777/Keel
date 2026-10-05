@@ -37,4 +37,5 @@ The SessionStart hook injects the digest verbatim; the PostToolUse hook refreshe
   - every Invariant stated so a cold session can check it;
   - every OPEN line still open — an OPEN that quietly closed is a decision made in practice but never recorded; write the Decision or Requirement it became;
   - **covers still describe their pages** (anchors resolve: paths exist, terms registered, ids homed) — covers rot silently, and missed reads follow;
-  - **reopen watch**: a page still draft long after a reset row is protection silently off — name it (no thresholds; the reset row in the log is the marker).
+  - **reopen watch**: a page still draft long after a reset row is protection silently off — name it (no thresholds; the reset row in the log is the marker);
+  - stale `.keel/tmp/` leftovers from interrupted sub-skill runs — scratch, not notebook: delete them.

@@ -230,23 +230,90 @@ flowchart TD
 
 ## 7. 分图⑥：迭代子技能（主模块之外）
 
-```mermaid
-flowchart TD
-    ASK["用户自然语言触发<br/>（压力测试/备选/松弛探针/骨架测试）"]:::human
-    ST["keel-stress-test —— 攻击已声明假设"]:::ai
-    ALT["keel-alternatives —— 2–3 个真不同方向"]:::ai
-    RELAX["keel-relax-probe —— 松约束的收益与代价"]:::ai
-    SKEL["keel-skeleton —— 仅凭 00+P* 重建概念模型<br/>（优先新进程证据，自模拟必须标注）"]:::ai
-    PRED["共同纪律：先声明预测 → 执行 → 记录偏差"]:::ai
-    BACK["被采纳的结论 → 经主模块写入路径（②）进对应页"]:::mech
+四个技能（`keel-stress-test` / `keel-alternatives` / `keel-relax-probe` / `keel-skeleton`）共用同一副骨架——先声明预测、执行、记录偏差、三个出口——中段各不相同。先画骨架，再逐个画中段。
 
-    ASK --> ST & ALT & RELAX & SKEL --> PRED --> BACK
+```mermaid
+flowchart LR
+    ASK["用户自然语言触发"]:::human
+    ONE["四选一：stress-test · alternatives ·<br/>relax-probe · skeleton"]:::ai
+    PRED["共同纪律：先声明预测 → 执行 → 记录预测 vs 偏差<br/>（绝不先测后猜）"]:::ai
+    OUTA["采纳 → 经②（主模块写入路径）回所属页"]:::mech
+    OUTB["未决 → 所属页 OPEN 行（stress-test 台账）"]:::ai
+    OUTC["被拒 → 对话记录（alternatives 例外：<br/>被拒路线一行拒因进笔记本）"]:::ai
+    TMP["工作文件：.keel/tmp/（有笔记本，按需建、用完删）<br/>无笔记本 → 系统临时目录，项目内不留痕"]:::mech
+    ASK --> ONE --> PRED
+    PRED --> OUTA & OUTB & OUTC
+    PRED -.-> TMP
     classDef human fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
     classDef ai fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
     classDef mech fill:#eceff1,stroke:#546e7a,color:#37474f
 ```
 
-四个子技能有无笔记本都可用（skeleton 需要有）；对笔记本只读 + 经②写回，从不绕过。
+### stress-test —— 攻击假设
+
+```mermaid
+flowchart TD
+    COLLECT["收集假设：对话 + 相关页概念段<br/>（[assumption] 行 + 设计默默依赖的东西）"]:::ai
+    PREDICT["先声明预测：这条若错，什么会断、在哪个场景断"]:::ai
+    ATTACK["攻击：规模 10×/100× · 时间老化/时区 · 对抗用户 ·<br/>并发 · 资源极限 · 空/满边界"]:::ai
+    VERDICT["预测 vs 实际：倒 / 立 / 未决"]:::ai
+    RIPPLE["倒 → keel_ripple（笔记本存在时）→ 修订草案 → 采纳后经②"]:::ai
+    OPEN["未决 / 倒而未改 → 所属页 OPEN 行；<br/>跨轮重现的 OPEN = 系统性弱点，不是偶发"]:::ai
+    COLLECT --> PREDICT --> ATTACK --> VERDICT
+    VERDICT --> RIPPLE
+    VERDICT --> OPEN
+    classDef ai fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+```
+
+### alternatives —— 备选方向
+
+```mermaid
+flowchart TD
+    FACTS["固定共享事实：对话 + 根页 00 + 命中模块页 00<br/>（所有候选共享同一事实，只有解法分叉）"]:::ai
+    CLAIM["先声明预测：每个候选声称更好解决哪个需求/约束冲突"]:::ai
+    GEN["生成 2–3 个机制不同的候选，标注分叉点<br/>（近似克隆不算数——换措辞不是换机制）"]:::ai
+    JUDGE["对照预测评真实强弱 → 推荐一个 + 说清错选代价"]:::ai
+    USER["用户裁决分叉"]:::human
+    LAND["采纳路线 + 每条被拒路线一行拒因 → 经②写回"]:::ai
+    FACTS --> CLAIM --> GEN --> JUDGE --> USER --> LAND
+    classDef human fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
+    classDef ai fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+```
+
+### relax-probe —— 约束松弛探针
+
+```mermaid
+flowchart TD
+    ENUM["枚举活跃约束：对话 + 根页（Out of scope / P*）+ 模块页需求"]:::ai
+    PRED2["先声明预测：松掉它会不会改变概念模型结构<br/>（Entity/Flow/Invariant）"]:::ai
+    PROBE["只探绑定约束：当它不存在做设计 → 量代价<br/>（违反哪些需求 · 失去什么保证 · 谁承担）"]:::ai
+    VERD2["预测 vs 实际"]:::ai
+    SURV["幸存的松弛 → R/P 修正案 → 采纳后经②"]:::ai
+    FAIL["失败 → 一行拒因留在对话（仅当它改变原则才写入笔记本）"]:::ai
+    SILENT["永不静默松弛：每条被探约束的终态 =<br/>维持（理由在案）或可见修正案"]:::ai
+    ENUM --> PRED2 --> PROBE --> VERD2
+    VERD2 --> SURV
+    VERD2 --> FAIL
+    SURV --> SILENT
+    FAIL --> SILENT
+    classDef ai fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+```
+
+### skeleton —— 骨架测试（需要笔记本）
+
+```mermaid
+flowchart TD
+    INPUT["输入严格受限：所属页 00 + 根页 P*，别的一律不读<br/>（尤其不读已记录的概念模型本身）"]:::ai
+    REBUILD["重建 Entity/Flow/Invariant<br/>——像一个对项目一无所知的读者"]:::ai
+    FRESH["证据来源：优先真新进程（如 codex exec --ephemeral），<br/>标注 external；无此设施才自模拟，标注 self-simulated<br/>并告知用户此检查已弱化"]:::ai
+    DIFF["对照已记录概念模型 diff：覆盖率 + 矛盾"]:::ai
+    BAR["零矛盾是底线（矛盾即发现）；覆盖率 ≲ 一半 = 原则是装饰"]:::ai
+    FIX["指名哪条原则带不动哪部分 → 原则修订（用户采纳后经②）"]:::ai
+    INPUT --> REBUILD --> FRESH --> DIFF --> BAR --> FIX
+    classDef ai fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+```
+
+四个技能有无笔记本都可用（skeleton 需要有）；对笔记本只读 + 经②写回，从不绕过。三个出口即三种知识去向：采纳进笔记本、未决停成 OPEN 行（stress-test 的未决假设从此不再随对话蒸发）、被拒留在对话——alternatives 的被拒路线是唯一例外，一行拒因随采纳路线一起入册。四张图里没有出现任何服务器工具：迭代子技能全是语义，工作文件圈在 `.keel/tmp/`，产物走既有写路径。
 
 ---
 
@@ -282,6 +349,7 @@ flowchart TD
 - **18 个工具**：init · digest · status · ripple · write_section（page 参数）· confirm · reject · config（逐页声明/重开 + 开关）· glossary_register · ref_add · ref_remove · refs_verify · page_add · page_remove · page_covers · clean · compact · exempt。
 - **digest 组成**：指针 · 逐页 phase 行 · 根页 pins（Goal/Out of scope/Success/R-n/P-n/Invariant/Decision 行）· INDEX 原文（pages 表 + 保护引用）· 最近 3 条修正 · 习惯行（零匹配 + 记忆是证据）。
 - **保护引用默认 id**：`REF1..`；carries 可空（仅为防篡改而保护）。
+- **迭代子技能工作目录**：`.keel/tmp/`（有笔记本时按需创建、用完即删；非守护表面；无笔记本 → 系统临时目录，项目内不留痕；中断残留由定期对账清掉）。
 - **谁能动什么**：开发者——只在对话里说同意原话；AI——只调 `keel_*`；服务器——`.keel/` 唯一写入者（读则完全自由）。state.json 只经工具改；keel_status 是它的视图。
 - **宿主面事实**：插件 MCP = `<pluginRoot>/.mcp.json`（`plugin:keel:keel`）；hook stdout 必须严格 JSON；hook 从载荷 `cwd` 解析项目目录；插件路径锚 `${CLAUDE_PLUGIN_ROOT}`；Codex 经 `~/.codex/hooks.json` 注册同样的 hooks（一次性 `/hooks` 信任）；发布门禁 = hostcompat + smoke。
 - **失败模式出口**：暂存遗弃 → status 可见 + reject · 孤儿块 → clean · 引用漂移 → verify 报告 + 再生重纳 · state.json 损坏 → 保守默认（全部 draft），AMENDMENTS.md 是持久历史 · 过早声明 → 最多多几轮同意回合，且按页封顶 · covers 腐烂 → 定期对账点名 + 写门禁兜底 · 重开忘关 → reset 行在对账中点名。

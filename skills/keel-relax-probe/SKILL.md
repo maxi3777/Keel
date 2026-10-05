@@ -1,6 +1,6 @@
 ---
 name: keel-relax-probe
-description: Constraint-relaxation probe — systematically ask which constraint, if relaxed, unlocks a better design, and what that relaxation would cost. Use when the user asks to challenge constraints, explore what-if relaxations, probe the boundary of assumptions, or when a design feels over-constrained. Part of the Keel iteration tools; works with or without a DATUM.
+description: Constraint-relaxation probe — systematically ask which constraint, if relaxed, unlocks a better design, and what that relaxation would cost. Use when the user asks to challenge or relax constraints, explore what-if constraint relaxations, or when a design feels over-constrained. Part of the Keel iteration tools; works with or without a notebook.
 ---
 
 # Constraint-relaxation probe (Keel iteration tool)
@@ -11,4 +11,4 @@ description: Constraint-relaxation probe — systematically ask which constraint
 4. **Record predicted vs actual**. A relaxation that survives contact → propose it as a requirement/principle amendment through the keel module's write path (`keel_write_section`, targeting the owning page), if a notebook exists; one that fails → report the rejection reason in one line (it stays in the conversation record — write it into the notebook only if it changes a principle).
 5. Never relax silently: every probed constraint ends as either unchanged (its justification now on record in the conversation) or a visible amendment.
 
-Temp discipline: working notes live in the system temp directory and are deleted when done. Nothing persists except what you report and what is amended into the DATUM.
+Temp discipline: with a notebook, working notes live in `.keel/tmp/` — created on demand, deleted when done, never anywhere else in the project; without one, in the system temp directory. Nothing persists except what you report and what is amended into the notebook.

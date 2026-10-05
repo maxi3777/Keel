@@ -89,7 +89,7 @@ Four standalone thinking tools, split from the main skill so they can be invoked
 | `keel-relax-probe` | Which constraint, if relaxed, unlocks a better design — and what it costs |
 | `keel-skeleton` | Rebuild the concept model from 00 + P\* alone; low coverage means the principles are decoration |
 
-All four work with or without a notebook (skeleton requires one), keep temp files only in the system temp directory and delete them when done, and feed adopted findings back through the main module's write path.
+All four work with or without a notebook (skeleton requires one); working notes live in `.keel/tmp/` when a notebook exists (created on demand, removed when done) and in the system temp directory otherwise. Adopted findings return through the main module's write path; unresolved stress-test findings park as OPEN lines on the owning page.
 
 ### Enforcement layers
 

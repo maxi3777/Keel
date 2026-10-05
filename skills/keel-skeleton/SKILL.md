@@ -1,6 +1,6 @@
 ---
 name: keel-skeleton
-description: Skeleton test — rebuild the concept model from the requirements and principles alone, then diff against the recorded one; low coverage means the principles are decoration that cannot carry the design. Use when the user asks for a skeleton test, to check whether the principles carry the design, or whether the concept is self-consistent. Part of the Keel iteration tools; requires a DATUM.
+description: Skeleton test — rebuild the concept model from the requirements and principles alone, then diff against the recorded one; low coverage means the principles are decoration that cannot carry the design. Use when the user asks for a skeleton test, to check whether the principles carry the design, or whether the concept is self-consistent. Part of the Keel iteration tools; requires a notebook.
 ---
 
 # Skeleton test (Keel iteration tool)
@@ -11,4 +11,4 @@ description: Skeleton test — rebuild the concept model from the requirements a
 4. **Diff against the recorded concept model**: coverage = the share of recorded entities / flows / invariants the rebuild recovers, plus any contradictions found. Zero contradictions is the bar (a contradiction is a finding, not a style issue); coverage below roughly half means the principles are decoration.
 5. **Low coverage → the principles are decoration**: report exactly which principle fails to carry which part; propose principle revisions through the keel module's write path (`keel_write_section`, targeting the owning page), if the user adopts them.
 
-Temp discipline: the rebuild output and any working files are temporary — report findings in the conversation, delete the files. Nothing is stored unless amended into the DATUM.
+Temp discipline: the rebuild output and any working files live in `.keel/tmp/` — created on demand, deleted when done, never anywhere else in the project. Report findings in the conversation; nothing is stored unless amended into the notebook.
