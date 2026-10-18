@@ -40,7 +40,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const VERSION = '2.3.0';
+const VERSION = '2.4.0';
 
 const SECTIONS = [
   { id: '00', key: 'intent',   title: '00 Intent' },
@@ -164,6 +164,16 @@ function makeKeel(root) {
     if (idx < 0) blocks.push({ title: SECTIONS.find(s => s.key === key).title, lines: body.split(/\r?\n/) });
     else blocks[idx].lines = body.split(/\r?\n/);
     fs.writeFileSync(file, serialize(blocks));
+  }
+  // Server-maintained metadata line so a cold reader of the file alone knows
+  // its phase — state.json and keel_digest otherwise carry it exclusively.
+  function writePhaseLine(page, phase, epoch) {
+    const file = pagePath(page);
+    const line = `<!-- keel phase: ${phase} · epoch ${epoch || 1} -->`;
+    const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/);
+    if (lines[0] && lines[0].startsWith('<!-- keel phase:')) lines[0] = line;
+    else lines.unshift(line);
+    fs.writeFileSync(file, lines.join('\n'));
   }
 
   // ---------- claim ids (globally unique across pages) ----------
@@ -309,6 +319,8 @@ function makeKeel(root) {
     fs.writeFileSync(amendmentsPath, fs.readFileSync(path.join(tplDir, 'AMENDMENTS.md'), 'utf8'));
     writeState({ pages: { root: { phase: 'draft', epoch: 1 }, terms: { phase: 'draft', epoch: 1 } },
       consentMode: !notebook, stewardMode: !notebook, proposals: {}, seq: { proposal: 0, amendment: 0 }, coreCount: 0 });
+    writePhaseLine('root', 'draft', 1);
+    writePhaseLine('terms', 'draft', 1);
     return {
       created: dir, files: ['DATUM.md', 'INDEX.md', 'pages/terms.md', 'AMENDMENTS.md'],
       mode: notebook ? 'notebook (consent and steward stay off)' : 'guarded (switches default on at activation)',
@@ -326,6 +338,7 @@ function makeKeel(root) {
       else if (e.kind === 'page-add') {
         fs.writeFileSync(pagePath(e.name), substPage(e.name));
         st.pages[e.name] = { phase: 'draft', epoch: 1 };
+        writePhaseLine(e.name, 'draft', 1);
         setIndexPages(e.rows);
       } else if (e.kind === 'page-remove') {
         fs.renameSync(pagePath(e.name), path.join(archiveDir, `page-${e.name}-epoch${e.epoch}-${Date.now()}.md`));
@@ -460,6 +473,7 @@ function makeKeel(root) {
             ? 'All touched pages are draft — nothing is gated: applied immediately and logged (ai-managed).'
             : 'Consent is off or no touched surface is authoritative — applied immediately and logged (ai-managed).'),
         bypassedConsent: effLevel !== 'peripheral',
+        consentState: effLevel === 'peripheral' ? 'batch-notified' : 'ai-managed',
       };
     }
     st.seq.proposal += 1;
@@ -531,27 +545,39 @@ function makeKeel(root) {
   function glossaryRegister(args) {
     requireInit();
     const st = readState();
-    const { term, definition, load_bearing = [], aliases = [] } = args;
-    if (!term || !definition) throw new Error('term and definition are required.');
-    if (String(term).includes('|') || String(definition).includes('|')) throw new Error('term and definition must not contain "|" — it breaks the table row.');
-    const row = `| ${term} | ${definition} | ${load_bearing.join('; ')} | ${aliases.join(', ')} | active |`;
-    const body = getSection('terms', 'glossary') || '';
-    const lines = body.split(/\r?\n/);
-    let replaced = false;
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].startsWith('|') && lines[i].split('|').slice(1, -1).map(s => s.trim())[0] === term) {
-        lines[i] = row; replaced = true; break;
+    const list = Array.isArray(args.terms) && args.terms.length
+      ? args.terms
+      : [{ term: args.term, definition: args.definition, load_bearing: args.load_bearing, aliases: args.aliases }];
+    if (!list.length) throw new Error('Provide term+definition, or a non-empty terms:[{term, definition, …}].');
+    for (const t of list) {
+      if (!t.term || !t.definition) throw new Error('term and definition are required.');
+      if (String(t.term).includes('|') || String(t.definition).includes('|')) throw new Error('term and definition must not contain "|" — it breaks the table row.');
+    }
+    const lines = (getSection('terms', 'glossary') || '').split(/\r?\n/);
+    const citations = new Set(); const names = [];
+    for (const t of list) {
+      const load_bearing = t.load_bearing || []; const aliases = t.aliases || [];
+      const row = `| ${t.term} | ${t.definition} | ${load_bearing.join('; ')} | ${aliases.join(', ')} | active |`;
+      let replaced = false;
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].startsWith('|') && lines[i].split('|').slice(1, -1).map(s => s.trim())[0] === t.term) {
+          lines[i] = row; replaced = true; break;
+        }
+      }
+      if (!replaced) lines.splice(lastTableRowIndex(lines) + 1, 0, row);
+      names.push(t.term);
+      for (const r of load_bearing.map(String)) {
+        const c = r.trim();
+        if (c && (ID_REF.test(c) || st.pages[c])) citations.add(c);
       }
     }
-    if (!replaced) lines.splice(lastTableRowIndex(lines) + 1, 0, row);
-    const citations = load_bearing.map(r => String(r).trim()).filter(r => ID_REF.test(r) || st.pages[r]);
-    const level = citations.some(c => surfacePhaseOf(c, st) === 'authoritative') ? 'core' : 'peripheral';
+    const level = [...citations].some(c => surfacePhaseOf(c, st) === 'authoritative') ? 'core' : 'peripheral';
     return propose({
       section: 'glossary', content: lines.join('\n'), level, page: 'terms',
-      summary: `Term "${term}" ${replaced ? 'updated' : 'registered'}`,
-      rationale: `Load-bearing at: ${load_bearing.join('; ') || '(none declared — treated as peripheral)'}`,
+      summary: `Terms registered/updated: ${names.join(', ')}`,
+      rationale: `Load-bearing citations: ${[...citations].join('; ') || '(none declared — treated as peripheral)'}`,
       position: 'terms · G Glossary',
-    }, { closure: citations });
+    }, { closure: [...citations] });
   }
 
   // ---------- protected references ----------
@@ -727,11 +753,15 @@ function makeKeel(root) {
     const st = readState();
     const epochCore = core.length;
     const lifetimeCore = st.coreCount || 0;
+    const compacted = rows.some(r => r.level === 'compaction');
     return {
       pages: pageMap(st),
       coreAmendments: epochCore, coreAmendmentsLifetime: lifetimeCore, totalAmendments: rows.length,
-      yellowFlagBasis: 'core amendments since the last compaction (lifetime count is reported separately and never resets)',
-      yellowFlag: epochCore > 6 ? `Many core amendments since the last compaction (${epochCore}; lifetime ${lifetimeCore}): the concept may never have converged; consider re-examining the principles.` : null,
+      yellowFlagBasis: compacted
+        ? 'core amendments since the last compaction (lifetime count is reported separately and never resets)'
+        : 'core amendments since init (no compaction has happened yet)',
+      yellowFlag: compacted && epochCore > 6 ? `Many core amendments since the last compaction (${epochCore}; lifetime ${lifetimeCore}): the concept may never have converged; consider re-examining the principles.` : null,
+      establishmentNote: !compacted && epochCore > 6 ? `${epochCore} core amendments and no compaction yet — establishment writes count too; if the count keeps climbing after the notebook settles, re-examine the principles.` : null,
       oscillation: { note: 'Reference metric only — never a threshold, never gates anything.', groups: oscillating },
       pendingProposals: Object.values(st.proposals).map(p => ({ id: p.id, summary: p.summary, level: p.effLevel })),
     };
@@ -750,10 +780,16 @@ function makeKeel(root) {
     if (!st.pages[page]) throw new Error(`Unknown page: ${page} (known: ${pageNames(st).join(', ')})`);
     if (args.authoritative === true && st.pages[page].phase === 'draft') {
       st.pages[page].phase = 'authoritative'; // one-way per epoch; never a side-effect of a write
+      const ids = [...idsOfPage(page)];
+      const anchors = new Set([...ids, page]);
+      const glossaryNowCore = parseGlossaryRows()
+        .filter(g => (g.load || '').split(/[,，;；]\s*/).some(c => anchors.has(c.trim())))
+        .map(g => g.term);
+      writePhaseLine(page, 'authoritative', st.pages[page].epoch);
       activated = {
         page, phase: 'authoritative', epoch: st.pages[page].epoch,
-        consentMode: st.consentMode, stewardMode: st.stewardMode,
-        note: `Page "${page}" declared authoritative — announce to the user: the consent mechanism and the structured post-plan check (STEWARD) now apply to this page ${st.consentMode || st.stewardMode ? 'per the switches' : '(both switched off — notebook mode)'}. Phases are per-page; declare or reopen pages individually via keel_config.`,
+        consentMode: st.consentMode, stewardMode: st.stewardMode, glossaryNowCore,
+        note: `Page "${page}" declared authoritative — announce to the user: the consent mechanism and the structured post-plan check (STEWARD) now apply to this page ${st.consentMode || st.stewardMode ? 'per the switches' : '(both switched off — notebook mode)'}. Phases are per-page; declare or reopen pages individually via keel_config.${glossaryNowCore.length ? ` ${glossaryNowCore.length} glossary term(s) now cite authoritative surfaces (${glossaryNowCore.join(', ')}) — edits to them are core from now on; tier is evaluated at every write, rows store no tier.` : ''}`,
       };
     }
     if (args.phase === 'draft' && st.pages[page].phase === 'authoritative') {
@@ -769,6 +805,7 @@ function makeKeel(root) {
       st.pages[page].phase = 'draft';
       st.pages[page].epoch = epoch + 1;
       writeState(st);
+      writePhaseLine(page, 'draft', epoch + 1);
       const n = appendAmendment({ level: 'reset', position: `${page} page`, summary: `Page "${page}" reopened for rework (epoch ${epoch}→${epoch + 1}) — user-directed`, consent: 'ai-managed' });
       bumpIndexLastAmend(page, n);
       const termsToReaffirm = parseGlossaryRows().filter(g => (g.load || '').split(/[,，;；]\s*/).some(c => anchors.has(c.trim()))).map(g => g.term);
@@ -892,8 +929,56 @@ function makeKeel(root) {
     };
   }
 
+  // ---------- coverage lint (report-only, never a gate) ----------
+  function coverage() {
+    requireInit();
+    const st = readState();
+    const pages = pageNames(st);
+    const defined = new Map(); // claim id -> defining page
+    for (const p of pages) for (const id of idsOfPage(p)) defined.set(id, p);
+    const ID_TOKEN = /\b([PRD]\d+)\b/g;
+    const usages = new Map(); // id -> references outside its own definition line
+    const dangling = {}; const elsewhere = {};
+    for (const p of pages) {
+      const raw = fs.readFileSync(pagePath(p), 'utf8');
+      for (const ln of raw.split(/\r?\n/)) {
+        const def = ln.match(/^-\s+Requirement (R\d+):/) || ln.match(/^-\s+(P\d+)\s*[:：]/) || ln.match(/^-\s+Decision (D\d+):/);
+        ID_TOKEN.lastIndex = 0;
+        let m;
+        while ((m = ID_TOKEN.exec(ln))) {
+          const tok = m[1];
+          if (def && tok === def[1]) continue;
+          if (defined.has(tok)) {
+            usages.set(tok, (usages.get(tok) || 0) + 1);
+            if (defined.get(tok) !== p) (elsewhere[p] = elsewhere[p] || new Set()).add(tok);
+          } else (dangling[p] = dangling[p] || new Set()).add(tok);
+        }
+      }
+    }
+    const glossaryRows = parseGlossaryRows();
+    const glossaryDangling = [];
+    for (const g of glossaryRows) {
+      for (const c of (g.load || '').split(/[,，;；]\s*/)) {
+        const t = c.trim();
+        if (t && defined.has(t)) usages.set(t, (usages.get(t) || 0) + 1);
+        else if (t && !st.pages[t]) glossaryDangling.push({ term: g.term, citation: t });
+      }
+    }
+    const coversRaw = indexPagesTable().map(r => r[2] || '').join(' ');
+    const neverReferenced = [...defined.keys()].filter(id => !usages.get(id) && !coversRaw.includes(id));
+    const pack = (o) => Object.fromEntries(Object.entries(o).map(([p, s]) => [p, [...s].sort()]));
+    return {
+      pages: pages.map(p => ({ name: p, phase: st.pages[p].phase, ids: [...idsOfPage(p)] })),
+      danglingTokens: pack(dangling),
+      tokensDefinedElsewhere: pack(elsewhere),
+      neverReferenced,
+      glossaryDangling,
+      note: 'Report only — never a gate. danglingTokens: id-shaped tokens with no definition anywhere (typos, or local enumerations that never became claims). tokensDefinedElsewhere: ids used on a page that defines them elsewhere — usually legal cross-references, but this is where numbering collisions hide (e.g. an embedded "R1–R7" list colliding with root ids). neverReferenced: claims no other line, glossary citation, or covers anchor mentions. The semantics of each finding stay with the reader.',
+    };
+  }
+
   return {
-    exists, init, propose, confirm, reject, ripple, glossaryRegister,
+    exists, init, propose, confirm, reject, ripple, glossaryRegister, coverage,
     refAdd, refRemove, refsVerify, pageAdd, pageRemove, pageCovers,
     cleanOrphans, compact, exempt, health, config, digestText, status,
     getSection, findIdHome,
@@ -910,7 +995,9 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: {} } },
   { name: 'keel_ripple', description: 'Traceability closure: given claim ids (R-n/P-n/D-n), page names, or glossary terms, mechanically compute the affected ids and pages and the protected references now suspected stale.',
     inputSchema: { type: 'object', properties: { targets: { type: 'array', items: { type: 'string' } } }, required: ['targets'] } },
-  { name: 'keel_write_section', description: 'Write notebook sections (default page "root"; module pages via page). content replaces the ENTIRE section — Read the page first (plain markdown) and merge your change in. Pass section+content or sections:[{section, content}] to batch one logical change — one amendment row (and one consent, when active) covers the whole batch. Gating: staged while the target page is authoritative and consent is ON (or the change\'s closure cites an authoritative surface); draft pages write freely, logged ai-managed. Claim ids (Requirement R-n / P-n / Decision D-n) are globally unique across pages. mermaid blocks are syntax-checked (fence/bracket/quote balance) — well-formedness only.',
+  { name: 'keel_coverage', description: 'Notebook hygiene lint — report only, never a gate. Lists: id-shaped tokens with no definition anywhere (dangling), ids used on a page that defines them elsewhere (legal cross-references, but where numbering collisions hide), claims never referenced by any line, glossary citation or covers anchor, and glossary load-bearing citations that resolve to nothing. Run it in the periodic audit; the semantics of each finding stay with the reader.',
+    inputSchema: { type: 'object', properties: {} } },
+  { name: 'keel_write_section', description: 'Write notebook sections (default page "root"; module pages via page). content replaces the ENTIRE section — Read the page first (plain markdown) and merge your change in. Pass section+content or sections:[{section, content}] to batch one logical change — one amendment row (and one consent, when active) covers the whole batch. Gating: staged while the target page is authoritative and consent is ON (or the change\'s closure cites an authoritative surface); draft pages write freely, logged ai-managed. Rejected mechanically before anything is written: "## " headings inside section content ("##" is reserved for section boundaries — use "###"), a duplicate section within one batch, empty content, an empty summary, core level without a rationale, claim ids (Requirement R-n / P-n / Decision D-n) already defined on another page or section — they are globally unique — and mermaid blocks that fail the syntax check (fence/bracket/quote balance — well-formedness only).',
     inputSchema: { type: 'object', properties: {
       page: { type: 'string', description: 'root (default) · terms · a module page name' },
       section: { type: 'string', enum: ['intent', 'glossary', 'concept'] },
@@ -920,31 +1007,31 @@ const TOOLS = [
       summary: { type: 'string', description: 'one-line description of the change' }, rationale: { type: 'string' },
       overturns: { type: 'string', description: 'Entries this supersedes, e.g. a prior principle (feeds the oscillation reference metric)' }, position: { type: 'string', description: 'location label for the amendment row (defaults to page · section titles)' },
     }, required: ['level', 'summary'] } },
-  { name: 'keel_confirm', description: 'Apply a staged proposal after the user explicitly consented in the conversation. consent_evidence = the user\'s consenting words (audit trail). Returns staleRefs when protected documents are now suspected outdated.',
+  { name: 'keel_confirm', description: 'Apply a staged proposal after the user explicitly consented in the conversation. consent_evidence = the user\'s consenting words (audit trail), stored verbatim in the amendment row — it must be a single line without "|" characters (they break the log table). Refused when the proposal\'s target changed since staging (anti-clobber): keel_reject it and re-propose against the current content. Returns staleRefs when protected documents are now suspected outdated.',
     inputSchema: { type: 'object', properties: { proposal_id: { type: 'string' }, consent_evidence: { type: 'string' } }, required: ['proposal_id', 'consent_evidence'] } },
   { name: 'keel_reject', description: 'Discard a staged proposal.',
     inputSchema: { type: 'object', properties: { proposal_id: { type: 'string' } }, required: ['proposal_id'] } },
   { name: 'keel_config', description: 'The switchboard. Phases are per-page, switches are project-level. authoritative:true declares a page authoritative (default page "root"; one-way per epoch; the judgment is the agent\'s — activate when that page\'s essentials are recorded in language that survives the session; announce it to the user). phase:"draft" + page REOPENS an authoritative page (user-directed: snapshot to archive, pending proposals on it dropped, reverse ripple reported). consent/steward flip the project switches (default ON at first activation; notebook projects start OFF).',
     inputSchema: { type: 'object', properties: { consent: { type: 'boolean' }, steward: { type: 'boolean' }, authoritative: { type: 'boolean' }, page: { type: 'string' }, phase: { type: 'string', enum: ['draft'] } } } },
-  { name: 'keel_glossary_register', description: 'Register/update a term on the terms page (the glossary is global). load_bearing cites claim ids or page names; a term citing an authoritative surface is core-tier (staged while consent is active).',
-    inputSchema: { type: 'object', properties: { term: { type: 'string' }, definition: { type: 'string' }, load_bearing: { type: 'array', items: { type: 'string' } }, aliases: { type: 'array', items: { type: 'string' } } }, required: ['term', 'definition'] } },
-  { name: 'keel_ref_add', description: 'Admit a derived document into the anti-degradation scope (protected reference, listed in INDEX). Records whole-file SHA-256 at admission; carries = the claim ids or pages this document renders (optional — empty when the document is protected for its own sake). Moves the protection boundary: core-tier while any page is authoritative and consent is active.',
+  { name: 'keel_glossary_register', description: 'Register/update terms on the terms page (the glossary is global). One term via term+definition, or several at once via terms:[{term, definition, load_bearing, aliases}, …] — one call, one amendment row. load_bearing cites claim ids or page names; a term citing an authoritative surface is core-tier (staged while consent is active). term and definition are required and must not contain "|" (it breaks the table row).',
+    inputSchema: { type: 'object', properties: { term: { 'type': 'string' }, definition: { 'type': 'string' }, load_bearing: { type: 'array', items: { type: 'string' } }, aliases: { type: 'array', items: { type: 'string' } }, terms: { type: 'array', description: 'batch form: [{term, definition, load_bearing?, aliases?}, …]', items: { type: 'object', properties: { term: { type: 'string' }, definition: { type: 'string' }, load_bearing: { type: 'array', items: { type: 'string' } }, aliases: { type: 'array', items: { type: 'string' } } }, required: ['term', 'definition'] } } } } },
+  { name: 'keel_ref_add', description: 'Admit a derived document into the anti-degradation scope (protected reference, listed in INDEX). Records whole-file SHA-256 at admission; carries = the claim ids or pages this document renders (optional — empty when the document is protected for its own sake). Moves the protection boundary: core-tier while any page is authoritative and consent is active. path and carries must not contain "|"; the file must exist relative to the project root.',
     inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'relative to project root' }, carries: { type: 'array', items: { type: 'string' }, description: 'claim ids (R-n/P-n/D-n) or page names this document renders' }, label: { type: 'string', description: 'custom reference id (default REF<n>)' } }, required: ['path'] } },
   { name: 'keel_ref_remove', description: 'Remove a protected reference (shrinks the protection boundary; core-tier while any page is authoritative and consent is active). The document itself is untouched.',
     inputSchema: { type: 'object', properties: { ref: { type: 'string' } }, required: ['ref'] } },
   { name: 'keel_refs_verify', description: 'Re-hash every active protected reference and report matches/mismatches. Tamper-evidence only — never blocks; regenerate or re-admit after intentional changes.',
     inputSchema: { type: 'object', properties: {} } },
-  { name: 'keel_page_add', description: 'Add a module page (pages/<name>.md) — the same shape as the root page (a 00 and a 01), module-scoped: requirements in 00; concept model, decisions, open questions in 01; weighted principles stay on root. covers = what the page governs, in stable anchors (repo paths/globs, glossary terms, claim ids) — INDEX routes sessions by it. Core-tier while any page is authoritative.',
+  { name: 'keel_page_add', description: 'Add a module page (pages/<name>.md) — the same shape as the root page (a 00 and a 01), module-scoped: requirements in 00; concept model, decisions, open questions in 01; weighted principles stay on root. covers = what the page governs, in stable anchors (repo paths/globs, glossary terms, claim ids) — INDEX routes sessions by it. Core-tier while any page is authoritative. The name must be kebab-case (^[a-z][a-z0-9-]{0,31}$) and not already exist; covers is required and must not contain "|".',
     inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'kebab-case, e.g. orders' }, covers: { type: 'array', items: { type: 'string' } } }, required: ['name', 'covers'] } },
   { name: 'keel_page_remove', description: 'Remove a module page (root and terms are structural and stay). Snapshots the page into archive/, drops its pending proposals, and reports glossary terms whose load-bearing refs just went dangling. Refuses while protected references still carry this page\'s ids.',
     inputSchema: { type: 'object', properties: { page: { type: 'string' } }, required: ['page'] } },
-  { name: 'keel_page_covers', description: 'Update a page\'s covers in INDEX (routing metadata — it decides what future sessions read; core-tier while any page is authoritative).',
+  { name: 'keel_page_covers', description: 'Update a page\'s covers in INDEX (routing metadata — it decides what future sessions read; core-tier while any page is authoritative). covers is required and must not contain "|".',
     inputSchema: { type: 'object', properties: { page: { type: 'string' }, covers: { type: 'array', items: { type: 'string' } } }, required: ['page', 'covers'] } },
   { name: 'keel_clean', description: 'Maintenance: remove orphan "## " blocks from any notebook page (misplaced headings). Keyed sections and preambles are untouched; logged as a maintenance amendment.',
     inputSchema: { type: 'object', properties: {} } },
   { name: 'keel_compact', description: 'Compact the amendment log: the AI provides merged summary entries, the server archives the raw log verbatim (never deleted). Refuses below 5 entries.',
     inputSchema: { type: 'object', properties: { entries: { type: 'array', items: { type: 'object', properties: { position: { type: 'string' }, summary: { type: 'string' } }, required: ['position', 'summary'] } } }, required: ['entries'] } },
-  { name: 'keel_exempt', description: 'Explicit waiver: a change conflicts with the notebook but the user approves it despite the conflict; recorded for audit.',
+  { name: 'keel_exempt', description: 'Explicit waiver: a change conflicts with the notebook but the user approves it despite the conflict; recorded for audit. summary and reason are both required.',
     inputSchema: { type: 'object', properties: { summary: { type: 'string' }, reason: { type: 'string' } }, required: ['summary', 'reason'] } },
 ];
 
@@ -955,6 +1042,7 @@ function startStdio() {
     keel_digest: () => keel.digestText(),
     keel_status: () => keel.status(),
     keel_ripple: a => keel.ripple(a.targets),
+    keel_coverage: () => keel.coverage(),
     keel_write_section: a => keel.propose(a),
     keel_confirm: a => keel.confirm(a),
     keel_reject: a => keel.reject(a),

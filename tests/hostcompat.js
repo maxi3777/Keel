@@ -18,6 +18,9 @@
  *  R3 version sync — plugin.json, marketplace.json and server.js agree.
  *  R4 every packaging-referenced file exists (hook scripts, skill files,
  *     references, templates, MCP entry).
+ *  R5 rejection rules are visible before the action — every mechanical
+ *     rejection the server enforces must appear in its tool's description;
+ *     a rule that exists only in the error message is hidden knowledge.
  */
 'use strict';
 const fs = require('fs');
@@ -104,6 +107,27 @@ const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
     for (const m of new Set((fs.readFileSync(path.join(skillsDir, s, 'SKILL.md'), 'utf8').match(/references\/[A-Za-z0-9_-]+\.md/g) || []))) {
       ok(fs.existsSync(path.join(skillsDir, s, m)), `skill ${s}: reference exists: ${m}`);
     }
+  }
+}
+
+// R5 — rejection rules visible before the action (description mentions them)
+{
+  const { TOOLS } = require('../mcp/server.js');
+  const byName = Object.fromEntries(TOOLS.map(t => [t.name, t.description || '']));
+  const MUST_MENTION = [
+    ['keel_write_section', '###'], ['keel_write_section', 'globally unique'],
+    ['keel_write_section', 'mermaid'], ['keel_write_section', 'summary'],
+    ['keel_write_section', 'rationale'],
+    ['keel_confirm', 'consent_evidence'], ['keel_confirm', '"|"'],
+    ['keel_glossary_register', '"|"'],
+    ['keel_ref_add', '"|"'],
+    ['keel_page_add', '"|"'], ['keel_page_add', 'kebab-case'],
+    ['keel_page_covers', '"|"'],
+    ['keel_compact', '5'],
+    ['keel_exempt', 'reason'],
+  ];
+  for (const [tool, needle] of MUST_MENTION) {
+    ok(Boolean(byName[tool]) && byName[tool].includes(needle), `R5 rejection-visible: ${tool} description mentions ${needle}`);
   }
 }
 

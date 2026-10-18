@@ -115,10 +115,10 @@ const OCONCEPT = `### Concept model
 
 (async () => {
   let r = await rpc('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'smoke', version: '0' } });
-  ok(r.result.serverInfo.version === '2.3.0', 'initialize (server version 2.3.0)');
+  ok(r.result.serverInfo.version === '2.4.0', 'initialize (server version 2.4.0)');
   child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
   r = await rpc('tools/list', {});
-  ok(r.result.tools.length === 18, `tools/list exposes 18 tools (got ${r.result.tools.length})`);
+  ok(r.result.tools.length === 19, `tools/list exposes 19 tools (got ${r.result.tools.length})`);
   ok(!r.result.tools.some(t => t.name === 'keel_health' || t.name === 'keel_read'), 'keel_health and keel_read stay gone (reads are free)');
   ok(r.result.tools.some(t => t.name === 'keel_page_add' || t.name === 'keel_page_remove' || t.name === 'keel_page_covers'), 'page lifecycle tools present');
 
@@ -371,9 +371,44 @@ const OCONCEPT = `### Concept model
   try { kf.confirm({ proposal_id: fBad.proposalId, consent_evidence: 'a | b' }); } catch (e) { fPipeErr = e.message; }
   ok(/single line/.test(fPipeErr), 'consent evidence with "|" rejected (log-table safety)');
   kf.reject({ proposal_id: fBad.proposalId });
+  // batch glossary: one call, one amendment row; staged when citing authoritative ids
+  const fRowCount = (p) => fs.readFileSync(p, 'utf8').split(/\r?\n/).filter(l => l.startsWith('|') && !/\|-{3}/.test(l) && !/^\|\s*#/.test(l)).length;
+  const fLog = path.join(fb, '.keel', 'AMENDMENTS.md');
+  const fBefore = fRowCount(fLog);
+  const fBatch = kf.glossaryRegister({ terms: [
+    { term: 'alpha', definition: 'first', load_bearing: ['R1'] },
+    { term: 'beta', definition: 'second' },
+  ] });
+  ok(fBatch.needsConsent === true, 'batch glossary citing an authoritative id stages as core');
+  kf.confirm({ proposal_id: fBatch.proposalId, consent_evidence: 'register both' });
+  ok(fRowCount(fLog) - fBefore === 1, 'batch glossary = one amendment row');
+  ok(/\| alpha \|/.test(kf.getSection('terms', 'glossary')) && /\| beta \|/.test(kf.getSection('terms', 'glossary')), 'both batched terms present on the terms page');
+  const fBatch2 = kf.glossaryRegister({ terms: [{ term: 'gamma', definition: 'third' }] });
+  ok(fBatch2.written === true && fBatch2.consentState === 'batch-notified', 'peripheral-only batch applies immediately (consentState)');
+  const fHealth = kf.health();
+  ok(fHealth.yellowFlag === null && /no compaction yet/.test(fHealth.establishmentNote || ''), 'never-compacted notebook: establishment note instead of yellow flag');
+  ok(fs.readFileSync(path.join(fb, '.keel', 'DATUM.md'), 'utf8').startsWith('<!-- keel phase: authoritative · epoch 1 -->'), 'root file carries its server-maintained phase line');
+  ok(fs.readFileSync(path.join(fb, '.keel', 'pages', 'orders.md'), 'utf8').startsWith('<!-- keel phase: draft · epoch 1 -->'), 'module page file carries its phase line');
   fs.rmSync(fb, { recursive: true, force: true });
 
-  // 22. notebook mode (factory direct): switches stay off
+  // 22. declaration FYI, reopen phase line, coverage lint (factory direct)
+  const fc = fs.mkdtempSync(path.join(os.tmpdir(), 'keel-fc-'));
+  const kc = mkFb(fc);
+  kc.init('fc', false);
+  kc.propose({ section: 'intent', content: '- Requirement R1: one\n- Requirement R2: two', level: 'peripheral', summary: 'i' });
+  kc.propose({ section: 'concept', content: '- P1: p\n- Decision D1: d — because r — revisit if x\n- note: this line mentions R99 by mistake', level: 'peripheral', summary: 'c' });
+  kc.glossaryRegister({ terms: [{ term: 'alpha', definition: 'a', load_bearing: ['R1'] }, { term: 'delta', definition: 'd', load_bearing: ['R77'] }] });
+  const fDecl = kc.config({ authoritative: true, page: 'root' });
+  ok(fDecl.activated && fDecl.activated.glossaryNowCore.includes('alpha'), 'declaration reports terms that just became core');
+  const fCovL = kc.coverage();
+  ok(fCovL.danglingTokens.root && fCovL.danglingTokens.root.includes('R99'), 'coverage: dangling id-shaped token reported');
+  ok(fCovL.glossaryDangling.some(g => g.term === 'delta' && g.citation === 'R77'), 'coverage: dangling glossary citation reported');
+  ok(fCovL.neverReferenced.includes('R2'), 'coverage: never-referenced claim reported');
+  kc.config({ phase: 'draft', page: 'root' });
+  ok(fs.readFileSync(path.join(fc, '.keel', 'DATUM.md'), 'utf8').startsWith('<!-- keel phase: draft · epoch 2 -->'), 'reopen updates the file phase line');
+  fs.rmSync(fc, { recursive: true, force: true });
+
+  // 23. notebook mode (factory direct): switches stay off
   const { makeKeel } = require(path.join(__dirname, '..', 'mcp', 'server.js'));
   const tmp2 = fs.mkdtempSync(path.join(os.tmpdir(), 'keel-nb-'));
   const k2 = makeKeel(tmp2);
@@ -382,7 +417,7 @@ const OCONCEPT = `### Concept model
   const ract = k2.config({ authoritative: true });
   ok(ract.activated && ract.activated.consentMode === false && ract.activated.stewardMode === false, 'notebook init: declaration keeps both switches OFF');
   const rc = k2.propose({ section: 'concept', content: CONCEPT, level: 'core', summary: 'nb concept', rationale: 'x' });
-  ok(rc.written === true && rc.bypassedConsent === true, 'notebook mode: writes stay ai-managed after activation');
+  ok(rc.written === true && rc.consentState === 'ai-managed', 'notebook mode: writes stay ai-managed after activation (consentState)');
 
   console.log(failed === 0 ? '\nSMOKE PASS' : `\nSMOKE FAIL (${failed})`);
   child.kill();
