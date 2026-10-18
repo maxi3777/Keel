@@ -24,5 +24,6 @@ Keel is your notebook ("The palest ink is better than the best memory"). It reco
 - Module pages: `keel_page_add {name, covers}` when a module needs its own addressable home — a single-module project simply never adds one. `covers` = stable anchors (repo paths/globs, glossary terms, claim ids); routing quality depends on them. Update with `keel_page_covers`; retire with `keel_page_remove` (snapshots to archive).
 - Claim ids (`Requirement R-n`, `P-n`, `Decision D-n`) are globally unique across all pages — pick numbers no other page uses; the server rejects collisions.
 - Read `references/notebook.md` when authoring or amending pages (layout, drafting, per-page activation, consent flow, module pages, reopen, protected references).
-- Read `references/steward.md` for the glance / post-plan check protocol, session bootstrap, and maintenance.
+- Read `references/steward.md` for the glance / post-plan check protocol, session bootstrap, the cold-reader audit, and maintenance.
+- Before a page's first declaration, run the cold-reader audit (references/steward.md): the whole notebook before the project's first declaration, then the page within its reading set (root + terms + the page).
 - Iteration tools are separate skills (`keel-stress-test`, `keel-alternatives`, `keel-relax-probe`, `keel-skeleton`); adopted findings come back through this module's write path.

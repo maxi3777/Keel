@@ -57,7 +57,7 @@ project switches (active while any page is authoritative; default ON):
   steward  ON — structured post-plan check              / OFF — the glance habit alone
 ```
 
-While a page is draft, the AI writes it freely — every change logged, never a question. When it judges a page complete, in language that survives the session, it declares that page authoritative itself and **announces that to you at the moment**. `keel_config {consent, steward}` flips either switch anytime, in either direction, no re-validation; a pure-notebook project (`keel_init {notebook:true}`) starts with both off. Each page file's first line is a server-maintained `<!-- keel phase: … -->` marker, so a cold reader of the file alone knows how frozen it is.
+While a page is draft, the AI writes it freely — every change logged, never a question. When it judges a page complete, in language that survives the session, it declares that page authoritative itself and **announces that to you at the moment**. Before a page's first declaration, the agent runs a cold-reader audit — an isolated subagent reads only `.keel/` and reports anything unclear, any negative-form line that is discussion history rather than boundary, and any dependence on files outside the notebook. `keel_config {consent, steward}` flips either switch anytime, in either direction, no re-validation; a pure-notebook project (`keel_init {notebook:true}`) starts with both off. Each page file's first line is a server-maintained `<!-- keel phase: … -->` marker, so a cold reader of the file alone knows how frozen it is.
 
 ### The glance
 

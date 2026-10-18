@@ -92,6 +92,7 @@ flowchart TD
     LOGD["每笔立即落盘 · 审计行 ai-managed<br/>（仅存在性必填；id 全局唯一；mermaid 良构检查）"]:::mech
     end
     JUDGE["AI 语义判断：这一页该记的都记了，<br/>且语言在整个项目生命周期内清晰"]:::ai
+    COLD["冷读者审计（仅首次声明前：T1 全册 / T2 该页+阅读集；<br/>隔离子代理只读 .keel，报复述/困惑/否定行裁决/外引）"]:::ai
     DECLARE["keel_config authoritative:true page —— 逐页显式声明<br/>（单向/纪元；激活从不作为写入的副作用发生）"]:::ai
     ACT["该页 phase → authoritative（开关项目级，默认开）<br/>页首 phase 行由服务器同步更新"]:::mech
     TELL["agent 向用户宣告该页已激活"]:::ai
@@ -100,7 +101,7 @@ flowchart TD
     INIT --> FREE
     PADD --> FREE
     FREE --> CLEAR --> LOGD
-    FREE --> JUDGE --> DECLARE --> ACT --> TELL
+    FREE --> JUDGE --> COLD --> DECLARE --> ACT --> TELL
     ACT -->|"用户要求重做该模块"| REOPEN
     REOPEN -->|"自由重写后再次声明"| DECLARE
     classDef human fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
@@ -213,7 +214,7 @@ flowchart TD
     STATUS["keel_status —— 逐页 phase/纪元 · 开关（配置+生效）·<br/>逐页计数 · 待定提案 · 健康度"]:::mech
     HEALTH["健康度：双时钟核心修正计数——纪元（上次压缩以来，<br/>黄旗>6 并标注依据）+ 终身（压缩不清零）"]:::mech
     OSC["振荡（同位置 ≥2 次 overturns）——仅参考，永不阈值"]:::mech
-    AUDIT["定期对账（触发式，README 推荐）：refs_verify + keel_coverage<br/>（悬空/撞号 token、未被引用 claim）+ 卫生检查<br/>实体被引用 · 不变量可冷检 · OPEN 仍开放 ·<br/>covers 仍描述其页 · 重开已久的页点名"]:::ai
+    AUDIT["定期对账（触发式，README 推荐）：refs_verify + keel_coverage<br/>（悬空/撞号 token、未被引用 claim）+ 冷读者审计<br/>（隔离子代理只读 .keel）+ 卫生检查：实体被引用 ·<br/>不变量可冷检 · OPEN 仍开放 · covers 仍描述其页 · 重开已久的页点名"]:::ai
     CLEAN["keel_clean —— 清任意页孤儿 '## ' 块（只记标题）"]:::mech
     COMPACT["keel_compact —— 少于 5 条拒绝；<br/>AI 出合并摘要，原始日志逐字归档永不删除"]:::mech
     ARCH["archive/ —— 压缩快照 · 重开前页面快照 · 移除页快照"]:::mech

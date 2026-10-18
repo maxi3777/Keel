@@ -27,12 +27,30 @@ With the steward switch off, only the glance applies — the habit is yours, the
 
 The SessionStart hook injects the digest verbatim; the PostToolUse hook refreshes it after every confirm. The Codex adapter registers the same hooks in `~/.codex/hooks.json`; on hosts without hooks, call `keel_digest` at session start and after confirmations. The digest's first line is the document pointer — any other workflow in the session may use it to find the notebook.
 
+## Cold-reader audit (the notebook's clarity test)
+
+"Write for the whole lifecycle" (iron rule 2) cannot be verified by the writer — the writer always holds the conversation context, a cold reader never does. The audit is the external signal: spawn an isolated-context subagent (fresh context, no conversation history — a general-purpose subagent where the host provides one, or a headless ephemeral run such as `codex exec --ephemeral`) that reads ONLY `.keel/` and reports. It is the notebook's third external-signal probe, beside the glance (plan vs pins) and the skeleton test (principles vs concept model).
+
+- **Reading set**: the root page in full + the terms page + the pages under audit. A cold reader gets more than a glance does (the glance sees only the pins slice) because the bar is higher: the notebook alone must make the project clear — as if every file outside `.keel/` had disappeared.
+- **When** (behavioral — the skill's protocol, never server-enforced):
+  - **T1** — before the project's FIRST declaration of any page: audit the whole notebook.
+  - **T2** — before a new page's first declaration, and before re-declaration after a reopen: audit that page within its reading set. A page understandable only through a SIBLING module page is itself a finding — the shared thing belongs on root (an invariant) or in the glossary, not in the sibling.
+  - **T3** — in the periodic audit (below): whole notebook.
+  - **T4** — on demand, any scope.
+- **Checklist** — one subagent run, four probes; the report comes back to you, findings become amendments through the standard write path:
+  1. Restate the project in a few sentences — the comprehension baseline; if this is off, everything below is suspect.
+  2. Confusion list — every point that was hard to understand, ambiguous, or dependent on unexplained wording.
+  3. Negative-line adjudication — for every requirement or decision stated in negative form: "If this line were deleted, would I actively misunderstand the project?" Yes → it is a boundary, keep. No → it is discussion history wearing a boundary's clothes; flag it for removal or conversion (a forward-pointing alternative, or a `revisit if` condition).
+  4. External dependencies — anything the reading set cannot resolve on its own: a recorded line citing a document outside `.keel/` for support is inadmissible (self-sufficiency, references/notebook.md).
+
+The audit is a test, not a gate: judgment over the findings stays with you and the user; a page declares after the real findings are resolved.
+
 ## Maintenance
 
 - `keel_status`: per-page phases and epochs, switches (configured value vs effective value — effective requires at least one authoritative page), per-page counts, pending proposals, health (oscillation = reference metric).
 - When the amendment log grows long → `keel_compact`: you write merged summary entries, the server archives the raw log verbatim (never deleted; it refuses below 5 entries).
 - Orphan `## ` blocks on any page (headings no tool can reach) → `keel_clean`; the amendment row records the removed titles, not their bodies.
-- **Periodic audit (trigger-based; the README recommends it to the user)**: after major rework, after a compaction, or after a long absence — run `keel_refs_verify` (report, never block; re-admit after intentional changes) and `keel_coverage` (dangling id tokens, numbering collisions, never-referenced claims, dangling glossary citations — judge each finding, it never gates), then re-check notebook hygiene:
+- **Periodic audit (trigger-based; the README recommends it to the user)**: after major rework, after a compaction, or after a long absence — run `keel_refs_verify` (report, never block; re-admit after intentional changes) and `keel_coverage` (dangling id tokens, numbering collisions, never-referenced claims, dangling glossary citations — judge each finding, it never gates), add a cold-reader audit pass (whole notebook, above), then re-check notebook hygiene:
   - every Entity referenced by some Flow or Invariant (an unreferenced entity is usually decoration);
   - every Invariant stated so a cold session can check it;
   - every OPEN line still open — an OPEN that quietly closed is a decision made in practice but never recorded; write the Decision or Requirement it became;
