@@ -44,6 +44,7 @@
 
 ### Open questions (what is knowingly undecided)
 
-<!-- - OPEN: <question> — blocks <R*/P*> if anything — default: <safe interim choice> -->
+<!-- - OPEN: <question> — blocks <R*/P*> if anything — default: <safe interim choice>.
+     Write the slot words in the project's language; only "- OPEN:" is fixed. -->
 
 - (none open)

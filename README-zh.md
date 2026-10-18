@@ -55,7 +55,7 @@ phase 按页算——完整的模块可以先受守护，未完成的模块继�
   steward  开 —— 计划后结构化检查     / 关 —— 只剩"看一眼"的基础习惯
 ```
 
-某页处于 draft 期间，AI 自由写入该页——每一次变更都记日志，从不发问。当它判定某页"该记的都记了、且脱离当前对话仍可读懂"时，它自己声明该页 authoritative，并**当场向你宣告**。`keel_config {consent, steward}` 随时翻转任一开关，双向皆可、无需重新验证；纯笔记本项目（`keel_init {notebook:true}`）从建立起两开关全关。
+某页处于 draft 期间，AI 自由写入该页——每一次变更都记日志，从不发问。当它判定某页"该记的都记了、且脱离当前对话仍可读懂"时，它自己声明该页 authoritative，并**当场向你宣告**。`keel_config {consent, steward}` 随时翻转任一开关，双向皆可、无需重新验证；纯笔记本项目（`keel_init {notebook:true}`）从建立起两开关全关。每个页面文件的首行是服务器维护的 `<!-- keel phase: … -->` 标记——只读文件的冷读者也能知道冻结到什么程度。
 
 ### 看一眼
 
@@ -112,7 +112,7 @@ claude plugin marketplace add maxi3777/Keel
 claude plugin install keel@keel-marketplace
 ```
 
-交互会话里同样的两步是斜杠命令（`/plugin marketplace add maxi3777/Keel`，然后 `/plugin install keel@keel-marketplace`）。日后更新：更新市场后重装，或添加时钉住版本（`maxi3777/Keel@v2.3.0`）。
+交互会话里同样的两步是斜杠命令（`/plugin marketplace add maxi3777/Keel`，然后 `/plugin install keel@keel-marketplace`）。日后更新：更新市场后重装，或添加时钉住版本（`maxi3777/Keel@v2.4.0`）。
 
 克隆验证（可选）：
 
@@ -156,7 +156,7 @@ node adapters/codex/install.js     # --uninstall 卸载
 - **重做模块**——"重做 orders 页" → 重开该页（快照、批量草稿、反向涟漪），稳定后重新声明。
 - **调整信任**——"把同意机制关掉" / "打开 steward" → `keel_config`，双向皆可，无需重新验证。
 - **保护文档**——"把这个架构文档保护起来" → `keel_ref_add`（按需 verify）。
-- **查看与维护**——"keel 状态怎么样" → `keel_status`（阶段、开关、待定提案、健康度——全部是参考指标，永不作阈值）。审计日志过长时 agent 执行压缩（原始日志逐字归档，永不删除）。大改之后、压缩之后、长期未开之后，跑一次定期对账：`keel_refs_verify` + 笔记本卫生检查。
+- **查看与维护**——"keel 状态怎么样" → `keel_status`（阶段、开关、待定提案、健康度——全部是参考指标，永不作阈值）。审计日志过长时 agent 执行压缩（原始日志逐字归档，永不删除）。大改之后、压缩之后、长期未开之后，跑一次定期对账：`keel_refs_verify` 和 `keel_coverage`（悬空/撞号 token、未被引用的 claim）+ 笔记本卫生检查。
 
 ## 限制与非目标
 

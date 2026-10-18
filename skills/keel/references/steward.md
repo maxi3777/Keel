@@ -32,7 +32,7 @@ The SessionStart hook injects the digest verbatim; the PostToolUse hook refreshe
 - `keel_status`: per-page phases and epochs, switches (configured value vs effective value — effective requires at least one authoritative page), per-page counts, pending proposals, health (oscillation = reference metric).
 - When the amendment log grows long → `keel_compact`: you write merged summary entries, the server archives the raw log verbatim (never deleted; it refuses below 5 entries).
 - Orphan `## ` blocks on any page (headings no tool can reach) → `keel_clean`; the amendment row records the removed titles, not their bodies.
-- **Periodic audit (trigger-based; the README recommends it to the user)**: after major rework, after a compaction, or after a long absence — run `keel_refs_verify` (report, never block; re-admit after intentional changes) and re-check notebook hygiene:
+- **Periodic audit (trigger-based; the README recommends it to the user)**: after major rework, after a compaction, or after a long absence — run `keel_refs_verify` (report, never block; re-admit after intentional changes) and `keel_coverage` (dangling id tokens, numbering collisions, never-referenced claims, dangling glossary citations — judge each finding, it never gates), then re-check notebook hygiene:
   - every Entity referenced by some Flow or Invariant (an unreferenced entity is usually decoration);
   - every Invariant stated so a cold session can check it;
   - every OPEN line still open — an OPEN that quietly closed is a decision made in practice but never recorded; write the Decision or Requirement it became;

@@ -1,4 +1,4 @@
-# Keel Protocol — v2.3.0
+# Keel Protocol — v2.4.0
 
 > Keel is the AI's **authoritative notebook**: a routed page set — a root DATUM, module pages, a global glossary — recording requirements, decisions, invariants and concept models, keeping them from silently degrading, and otherwise leaving the agent free. There is no workflow to direct, no phase pipeline, no numeric gates. The agent thinks and plans autonomously; the only ritual is the glance — *after planning, before implementing, match the plan against the digest (root pins + INDEX covers); read only what matched; zero matches → say so and proceed.*
 
@@ -18,7 +18,7 @@ tamper-evidenced (after the fact) protected references (SHA-256-verified)
 unprotected                       everything else
 ```
 
-- `.keel/DATUM.md` — **root page**, project-global core. `00 Intent`: goal (one sentence) · success criteria · out of scope **with its reason** · numbered requirements `- Requirement R1..Rn:` (a constraint is a requirement phrased as a boundary — same format, no separate namespace). `01 Concept`: weighted principles `- P1: …` (priority = list order, typically 3–5) · decisions `- Decision D1: <choice> — because <reason> — revisit if <condition>` · the global concept model — a short prose preamble plus addressable lines `- Entity: …`, `- Flow: …`, `- Invariant: …` (everyday words, no class names; assumptions tagged `[assumption]`; **root keeps only invariants any session could violate** — they are injected everywhere via the digest) · open questions `- OPEN: <question> — blocks <id> — default: <safe interim choice>`. Mermaid blocks are **projections of the prose, never replacements**; the server checks their fence/bracket/quote balance on write.
+- `.keel/DATUM.md` — **root page**, project-global core. `00 Intent`: goal (one sentence) · success criteria · out of scope **with its reason** · numbered requirements `- Requirement R1..Rn:` (a constraint is a requirement phrased as a boundary — same format, no separate namespace). `01 Concept`: weighted principles `- P1: …` (priority = list order, typically 3–5) · decisions `- Decision D1: <choice> — because <reason> — revisit if <condition>` · the global concept model — a short prose preamble plus addressable lines `- Entity: …`, `- Flow: …`, `- Invariant: …` (everyday words, no class names; assumptions tagged `[assumption]`; **root keeps only invariants any session could violate** — they are injected everywhere via the digest) · open questions `- OPEN: <question> — <what it blocks> — <safe interim default>` (three slots; the slot words are written in the project's language — only the leading `- OPEN:` marker is fixed, so a cold reader never meets unexplained jargon). Mermaid blocks are **projections of the prose, never replacements**; the server checks their fence/bracket/quote balance on write.
 - `.keel/pages/terms.md` — the **global glossary** (G): term / concept-level definition / load-bearing in / aliases / status.
 - `.keel/pages/<module>.md` — **module pages**, same altitude, module-scoped: module scope and requirements in 00; concept model, decisions, open questions in 01. No P\* lines (priorities are project-global, root only).
 - `.keel/INDEX.md` — the server-maintained **routing table**: pages (`page / path / covers / lastAmend`) + protected references (`ref / path / carries / sha256 / admitted / status`; default ids `REF1..`; `carries` = claim ids or page names, may be empty when the document is protected for its own sake).
@@ -26,6 +26,8 @@ unprotected                       everything else
 - `.keel/state.json` — per-page `phase`/`epoch` · `consentMode` · `stewardMode` · `proposals` (staged) · `seq` counters · `coreCount` (lifetime, survives compaction).
 - `.keel/archive/` — compaction snapshots, pre-reopen page snapshots, removed-page snapshots.
 - `.keel/tmp/` — transient scratch of the iteration sub-skills (created on demand, removed when done; not part of the guarded surface).
+
+Every page file's first line is a server-maintained `<!-- keel phase: draft|authoritative · epoch N -->` marker — phase lives in state.json, but a cold reader of the file alone sees how frozen it is.
 
 **Claim ids** (`Requirement R-n`, `P-n`, `Decision D-n`) are globally unique across all pages; the server rejects collisions (a rewrite may keep its own page's ids). Single-module is just an INDEX with no module rows yet — no modes, no migration, ever.
 
@@ -51,8 +53,11 @@ intent → keel_write_section (page defaults to root; single or sections-batch)
     escalates to core
   → if peripheral OR consent inactive for the touched surfaces → apply
     immediately + audit row (INDEX lastAmend bumped per touched page)
-  → else stage PR-n (per-entry baseContent snapshot) → user consent →
-    keel_confirm(consent_evidence — the user's words, quoted to 40)
+  → else stage PR-n (per-entry baseContent snapshot; INDEX pages-table
+    entries compare structural columns only — the lastAmend watermark
+    never invalidates a staged proposal) → user consent →
+    keel_confirm(consent_evidence — the user's words, quoted verbatim:
+    one line, no "|" characters)
   → anti-clobber: any target changed since staging ⇒ confirm refused with
     recovery instructions (keel_reject, re-propose)
   → apply → audit row (+lifetime core counter if tier contains core)
@@ -62,7 +67,7 @@ intent → keel_write_section (page defaults to root; single or sections-batch)
 
 `content` replaces the **entire** section — read-then-merge (reads are free). Batch = one logical change: one consent, one audit row. Consent economy (skill-level): stage first; empty closure + the user's verbatim specification ⇒ that message may serve as `consent_evidence`; non-empty closure ⇒ show the ripple and get fresh consent.
 
-`keel_glossary_register` writes the terms page and computes its tier from `load_bearing` (cites an authoritative id/page ⇒ core). `keel_ref_add` / `keel_ref_remove` / `keel_page_add` / `keel_page_remove` / `keel_page_covers` move the guarded or routed surfaces (core-tier while any page is authoritative); page removal refuses while protected references still carry the page's ids and reports dangling glossary citations.
+`keel_glossary_register` writes the terms page — one term, or several at once via `terms:[{term, definition, …},…]` (one call, one amendment row) — and computes its tier from `load_bearing` (cites an authoritative id/page ⇒ core). `keel_ref_add` / `keel_ref_remove` / `keel_page_add` / `keel_page_remove` / `keel_page_covers` move the guarded or routed surfaces (core-tier while any page is authoritative); page removal refuses while protected references still carry the page's ids and reports dangling glossary citations.
 
 ## 5. The glance and the post-plan check (STEWARD)
 
@@ -81,7 +86,8 @@ Write-then-admit: the owning workflow edits freely; `keel_ref_add {path, carries
 - `keel_clean` — removes orphan `## ` blocks from any page (the amendment row records titles only).
 - `keel_compact` — refused below 5 rows; AI-supplied merged summaries; raw log archived verbatim; the lifetime core counter survives.
 - `keel_exempt` — explicit waiver, reason required (presence, not length).
-- **Periodic audit (trigger-based; recommended in the README)**: after major rework, after a compaction, or after a long absence — `keel_refs_verify`, plus notebook hygiene: entities referenced, invariants cold-checkable, OPEN lines still open (a silently-closed OPEN is an unrecorded decision), **covers still describing their pages** (covers rot silently; missed reads follow), and the reopen watch (a page still draft long after a reset row is protection silently off).
+- `keel_coverage` — hygiene lint, report-only: id-shaped tokens with no definition (dangling), ids used where they are defined elsewhere (legal cross-references, but where numbering collisions hide), claims never referenced by any line/citation/covers anchor, glossary citations resolving to nothing. Never a gate; the semantics stay with the reader.
+- **Periodic audit (trigger-based; recommended in the README)**: after major rework, after a compaction, or after a long absence — `keel_refs_verify` and `keel_coverage`, plus notebook hygiene: entities referenced, invariants cold-checkable, OPEN lines still open (a silently-closed OPEN is an unrecorded decision), **covers still describing their pages** (covers rot silently; missed reads follow), and the reopen watch (a page still draft long after a reset row is protection silently off).
 
 ## 8. Iteration sub-skills (outside the main module)
 

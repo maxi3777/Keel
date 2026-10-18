@@ -2,7 +2,7 @@
 
 > **一句话。** Keel 是 AI 的权威笔记本：一组只能经服务器写入的页面（根 DATUM + 模块页 + 全局词汇表），由 INDEX 路由、digest 注入，防止跨会话的主题遗忘与静默漂移；AI 自由思考、自由计划，只在实施前"匹配一眼"。
 
-**文档契约。** 本文件是 Keel 的*心智模型*：开发者视角的全流程图景。它是派生文档——真源是代码（`mcp/server.js`、`skills/`、`hooks/`）与 `docs/PROTOCOL.md`；若本文件与它们冲突，**代码赢，本文件修**。对应 **Keel v2.3.0**。
+**文档契约。** 本文件是 Keel 的*心智模型*：开发者视角的全流程图景。它是派生文档——真源是代码（`mcp/server.js`、`skills/`、`hooks/`）与 `docs/PROTOCOL.md`；若本文件与它们冲突，**代码赢，本文件修**。对应 **Keel v2.4.0**。
 
 ---
 
@@ -93,7 +93,7 @@ flowchart TD
     end
     JUDGE["AI 语义判断：这一页该记的都记了，<br/>且语言在整个项目生命周期内清晰"]:::ai
     DECLARE["keel_config authoritative:true page —— 逐页显式声明<br/>（单向/纪元；激活从不作为写入的副作用发生）"]:::ai
-    ACT["该页 phase → authoritative（开关项目级，默认开）"]:::mech
+    ACT["该页 phase → authoritative（开关项目级，默认开）<br/>页首 phase 行由服务器同步更新"]:::mech
     TELL["agent 向用户宣告该页已激活"]:::ai
     REOPEN["keel_config phase draft page —— 重开（用户指令）：<br/>快照入档 · 弃该页暂存 · 纪元+1 · 反向涟漪报告"]:::mech
 
@@ -213,7 +213,7 @@ flowchart TD
     STATUS["keel_status —— 逐页 phase/纪元 · 开关（配置+生效）·<br/>逐页计数 · 待定提案 · 健康度"]:::mech
     HEALTH["健康度：双时钟核心修正计数——纪元（上次压缩以来，<br/>黄旗>6 并标注依据）+ 终身（压缩不清零）"]:::mech
     OSC["振荡（同位置 ≥2 次 overturns）——仅参考，永不阈值"]:::mech
-    AUDIT["定期对账（触发式，README 推荐）：refs_verify + 卫生检查<br/>实体被引用 · 不变量可冷检 · OPEN 仍开放 ·<br/>covers 仍描述其页 · 重开已久的页点名"]:::ai
+    AUDIT["定期对账（触发式，README 推荐）：refs_verify + keel_coverage<br/>（悬空/撞号 token、未被引用 claim）+ 卫生检查<br/>实体被引用 · 不变量可冷检 · OPEN 仍开放 ·<br/>covers 仍描述其页 · 重开已久的页点名"]:::ai
     CLEAN["keel_clean —— 清任意页孤儿 '## ' 块（只记标题）"]:::mech
     COMPACT["keel_compact —— 少于 5 条拒绝；<br/>AI 出合并摘要，原始日志逐字归档永不删除"]:::mech
     ARCH["archive/ —— 压缩快照 · 重开前页面快照 · 移除页快照"]:::mech
@@ -346,9 +346,12 @@ flowchart TD
 ## 9. Mermaid 装不下的常量与规则
 
 - **引用词汇**：claim id 正则 `^(P|R|D)\d+$`（全局唯一，服务器拒绝跨页冲突）；页名正则 `^[a-z][a-z0-9-]{0,31}$`；术语/引用的引用列可写 id 或页名。**数值写入门禁：无**——仅存在性必填：summary · 核心 rationale · consent 证据 · 豁免理由（审计行引前 40 字）。维护层的两个数字：少于 5 条拒绝压缩；纪元核心修正 >6 亮黄旗（纯提示，不拦截）。mermaid 良构检查：围栏闭合 + 括号/引号配平（fail-open，仅语法）。
-- **18 个工具**：init · digest · status · ripple · write_section（page 参数）· confirm · reject · config（逐页声明/重开 + 开关）· glossary_register · ref_add · ref_remove · refs_verify · page_add · page_remove · page_covers · clean · compact · exempt。
+- **19 个工具**：init · digest · status · ripple · write_section（page 参数）· confirm · reject · config（逐页声明/重开 + 开关）· glossary_register（含 terms 批量）· coverage（卫生 lint）· ref_add · ref_remove · refs_verify · page_add · page_remove · page_covers · clean · compact · exempt。
 - **digest 组成**：指针 · 逐页 phase 行 · 根页 pins（Goal/Out of scope/Success/R-n/P-n/Invariant/Decision 行）· INDEX 原文（pages 表 + 保护引用）· 最近 3 条修正 · 习惯行（零匹配 + 记忆是证据）。
 - **保护引用默认 id**：`REF1..`；carries 可空（仅为防篡改而保护）。
+- **防覆盖身份**：section 条目按目标 section 的内容比对；INDEX pages 表条目只比结构列（剔除 lastAmend 水位线）——同页不同 section 的并行提案可以共存，页面修订不会误杀已暂存的 covers/页面操作。
+- **同意证据**：全文存入审计行（单行、禁 `|`）；立即落盘的写入返回 `consentState: batch-notified | ai-managed`（与审计值同域）。
+- **页首 phase 行**：`<!-- keel phase: … · epoch N -->`，服务器在声明/重开/建页时维护——文件自足可读，冷读者不用问 state.json。
 - **迭代子技能工作目录**：`.keel/tmp/`（有笔记本时按需创建、用完即删；非守护表面；无笔记本 → 系统临时目录，项目内不留痕；中断残留由定期对账清掉）。
 - **谁能动什么**：开发者——只在对话里说同意原话；AI——只调 `keel_*`；服务器——`.keel/` 唯一写入者（读则完全自由）。state.json 只经工具改；keel_status 是它的视图。
 - **宿主面事实**：插件 MCP = `<pluginRoot>/.mcp.json`（`plugin:keel:keel`）；hook stdout 必须严格 JSON；hook 从载荷 `cwd` 解析项目目录；插件路径锚 `${CLAUDE_PLUGIN_ROOT}`；Codex 经 `~/.codex/hooks.json` 注册同样的 hooks（一次性 `/hooks` 信任）；发布门禁 = hostcompat + smoke。

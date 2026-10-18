@@ -57,7 +57,7 @@ project switches (active while any page is authoritative; default ON):
   steward  ON — structured post-plan check              / OFF — the glance habit alone
 ```
 
-While a page is draft, the AI writes it freely — every change logged, never a question. When it judges a page complete, in language that survives the session, it declares that page authoritative itself and **announces that to you at the moment**. `keel_config {consent, steward}` flips either switch anytime, in either direction, no re-validation; a pure-notebook project (`keel_init {notebook:true}`) starts with both off.
+While a page is draft, the AI writes it freely — every change logged, never a question. When it judges a page complete, in language that survives the session, it declares that page authoritative itself and **announces that to you at the moment**. `keel_config {consent, steward}` flips either switch anytime, in either direction, no re-validation; a pure-notebook project (`keel_init {notebook:true}`) starts with both off. Each page file's first line is a server-maintained `<!-- keel phase: … -->` marker, so a cold reader of the file alone knows how frozen it is.
 
 ### The glance
 
@@ -114,7 +114,7 @@ claude plugin marketplace add maxi3777/Keel
 claude plugin install keel@keel-marketplace
 ```
 
-Inside an interactive session the same steps are slash commands (`/plugin marketplace add maxi3777/Keel`, then `/plugin install keel@keel-marketplace`). To update later: refresh the marketplace and reinstall, or pin a ref when adding (`maxi3777/Keel@v2.3.0`).
+Inside an interactive session the same steps are slash commands (`/plugin marketplace add maxi3777/Keel`, then `/plugin install keel@keel-marketplace`). To update later: refresh the marketplace and reinstall, or pin a ref when adding (`maxi3777/Keel@v2.4.0`).
 
 Optionally verify the mechanical layer on a clone:
 
@@ -158,7 +158,7 @@ No slash subcommands — one skill, natural language:
 - **Rework a module** — *"redo the orders page"* → reopen that page (snapshot, batch-draft, reverse ripple), then re-declare when stable.
 - **Adjust trust** — *"turn consent off"* / *"turn steward on"* → `keel_config`, either direction, no re-validation.
 - **Protect documents** — *"protect this architecture doc"* → `keel_ref_add` (+ verify on demand).
-- **Check in and maintain** — *"keel status"* → `keel_status` (phases, switches, pending proposals, health — all reference metrics, never thresholds). When the amendment log grows, the agent compacts it (raw log archived verbatim, never deleted). After major rework, a compaction, or a long absence, run a periodic audit: `keel_refs_verify` plus a notebook-hygiene pass.
+- **Check in and maintain** — *"keel status"* → `keel_status` (phases, switches, pending proposals, health — all reference metrics, never thresholds). When the amendment log grows, the agent compacts it (raw log archived verbatim, never deleted). After major rework, a compaction, or a long absence, run a periodic audit: `keel_refs_verify` and `keel_coverage` (dangling or colliding id tokens, never-referenced claims), plus a notebook-hygiene pass.
 
 ## Limitations
 

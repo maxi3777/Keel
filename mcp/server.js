@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * Keel MCP server v2.3.0 — zero-dependency, stdio JSON-RPC (MCP).
+ * Keel MCP server v2.4.0 — zero-dependency, stdio JSON-RPC (MCP).
  *
  * Doctrine: Keel is the AI's authoritative NOTEBOOK — a routed set of pages
  * (a root DATUM, a global terminology page, module pages) recording

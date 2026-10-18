@@ -64,6 +64,7 @@
 ### Open questions (what is knowingly undecided)
 
 <!-- - OPEN: <question> — blocks <R*/P*> if anything — default: <the safe
-     interim choice, so a cold session never has to invent one> -->
+     interim choice, so a cold session never has to invent one>.
+     Write the slot words in the project's language; only "- OPEN:" is fixed. -->
 
 - (none open)
