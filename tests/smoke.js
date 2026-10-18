@@ -337,7 +337,43 @@ const OCONCEPT = `### Concept model
   });
   ok(hp.status === 0 && (hp.stdout || '').toString().trim() === '', 'post-confirm silent on failed tool call');
 
-  // 21. notebook mode (factory direct): switches stay off
+  // 21. usage-feedback regressions (factory direct): serialize stability,
+  // same-page disjoint proposals, covers/page-write decoupling, full evidence
+  const { makeKeel: mkFb } = require(path.join(__dirname, '..', 'mcp', 'server.js'));
+  const fb = fs.mkdtempSync(path.join(os.tmpdir(), 'keel-fb-'));
+  const kf = mkFb(fb);
+  kf.init('fb', false);
+  kf.propose({ section: 'intent', content: '- Requirement R1: x', level: 'peripheral', summary: 'i' });
+  kf.propose({ section: 'concept', content: '- P1: p\n- Decision D1: d — because r', level: 'peripheral', summary: 'c' });
+  kf.config({ authoritative: true, page: 'root' });
+  let fA = kf.propose({ section: 'intent', content: '- Requirement R1: x2', level: 'core', rationale: 'rw', summary: 'A' });
+  const fB = kf.propose({ section: 'concept', content: '- P1: p\n- Decision D1: d2 — because r', level: 'core', rationale: 'rw', summary: 'B' });
+  kf.confirm({ proposal_id: fA.proposalId, consent_evidence: 'ok a' });
+  kf.confirm({ proposal_id: fB.proposalId, consent_evidence: 'ok b' });
+  ok(kf.getSection('root', 'concept').startsWith('- P1: p\n- Decision D1: d2'), 'disjoint same-page proposals coexist (serialize round-trip stable)');
+  const fBytes1 = fs.readFileSync(path.join(fb, '.keel', 'DATUM.md'), 'utf8');
+  fA = kf.propose({ section: 'intent', content: '- Requirement R1: x2', level: 'core', rationale: 'rw', summary: 'A again' });
+  kf.confirm({ proposal_id: fA.proposalId, consent_evidence: 'ok again' });
+  ok(fs.readFileSync(path.join(fb, '.keel', 'DATUM.md'), 'utf8') === fBytes1, 're-applying identical content is byte-stable (no newline inflation)');
+  const fAdd = kf.pageAdd({ name: 'orders', covers: 'src/o/**' });
+  kf.confirm({ proposal_id: fAdd.proposalId, consent_evidence: 'add page' });
+  const fCov = kf.pageCovers({ page: 'orders', covers: 'src/o/**,R1' });
+  const fW = kf.propose({ section: 'intent', content: '- Requirement R1: x2\n- Requirement R2: y', level: 'core', rationale: 'g', summary: 'page write during covers' });
+  kf.confirm({ proposal_id: fW.proposalId, consent_evidence: 'ok write' });
+  kf.confirm({ proposal_id: fCov.proposalId, consent_evidence: 'ok covers' });
+  ok(fs.readFileSync(path.join(fb, '.keel', 'INDEX.md'), 'utf8').includes('src/o/**,R1'), 'staged covers survives an applied page amendment (lastAmend decoupled)');
+  const fLong = 'a consent quote long enough that the old forty-character cap would have truncated it mid-sentence';
+  const fE = kf.propose({ section: 'intent', content: '- Requirement R1: x3', level: 'core', rationale: 'r', summary: 'evidence' });
+  kf.confirm({ proposal_id: fE.proposalId, consent_evidence: fLong });
+  ok(fs.readFileSync(path.join(fb, '.keel', 'AMENDMENTS.md'), 'utf8').includes(fLong), 'consent evidence stored in full');
+  let fPipeErr = '';
+  const fBad = kf.propose({ section: 'intent', content: '- Requirement R1: x4', level: 'core', rationale: 'r', summary: 'pipe case' });
+  try { kf.confirm({ proposal_id: fBad.proposalId, consent_evidence: 'a | b' }); } catch (e) { fPipeErr = e.message; }
+  ok(/single line/.test(fPipeErr), 'consent evidence with "|" rejected (log-table safety)');
+  kf.reject({ proposal_id: fBad.proposalId });
+  fs.rmSync(fb, { recursive: true, force: true });
+
+  // 22. notebook mode (factory direct): switches stay off
   const { makeKeel } = require(path.join(__dirname, '..', 'mcp', 'server.js'));
   const tmp2 = fs.mkdtempSync(path.join(os.tmpdir(), 'keel-nb-'));
   const k2 = makeKeel(tmp2);

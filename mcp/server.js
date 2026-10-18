@@ -147,7 +147,10 @@ function makeKeel(root) {
     return SECTIONS.find(s => s.id === id) || null;
   }
   function serialize(blocks) {
-    return blocks.map(b => (b.title ? `## ${b.title}\n` : '') + b.lines.join('\n')).join('\n') + '\n';
+    // Intentionally no appended trailing newline: adding one per write inflates
+    // the last block on every sibling-section apply, which falsely trips the
+    // anti-clobber check on pending proposals (and grows the file forever).
+    return blocks.map(b => (b.title ? `## ${b.title}\n` : '') + b.lines.join('\n')).join('\n');
   }
   function getSection(page, key) {
     const b = parsePage(pagePath(page)).find(x => { const m = sectionMeta(x.title); return m && m.key === key; });
@@ -211,6 +214,10 @@ function makeKeel(root) {
     const rows = pages.split(/\r?\n/).filter(l => l.startsWith('|') && !SEP_ROW.test(l) && !/^\|\s*page\b/.test(l));
     return rows.map(l => l.split('|').slice(1, -1).map(s => s.trim()));
   }
+  // Anti-clobber identity of the pages table = its structural columns; lastAmend
+  // is a volatile watermark that every applied amendment bumps, so comparing it
+  // would kill any staged covers/page proposal on unrelated page writes.
+  function pagesStructural() { return indexPagesTable().map(r => r.slice(0, 3)); }
   function indexRefsTable() {
     const { refs } = splitIndex();
     return refs.split(/\r?\n/).filter(l => l.startsWith('|') && !SEP_ROW.test(l) && !/^\|\s*ref\b/.test(l))
@@ -389,20 +396,20 @@ function makeKeel(root) {
     }
     for (const op of (opts && opts.ops) || []) {
       if (op.kind === 'index-refs' || op.kind === 'index-pages') {
-        entries.push({ ...op, baseTable: op.kind === 'index-refs' ? indexRefsTable() : indexPagesTable() });
+        entries.push({ ...op, baseTable: op.kind === 'index-refs' ? indexRefsTable() : pagesStructural() });
       } else if (op.kind === 'page-add') {
         if (!PAGE_NAME.test(op.name)) throw new Error(`Page name must match ${PAGE_NAME} (kebab-case): ${op.name}`);
         if (st0.pages[op.name] || fs.existsSync(pagePath(op.name))) throw new Error(`Page already exists: ${op.name}`);
         if (String(op.covers).includes('|')) throw new Error('covers must not contain "|" — it breaks the table row.');
         op.rows = [...indexPagesTable(), [op.name, `pages/${op.name}.md`, op.covers, '—']];
-        entries.push({ ...op, baseTable: indexPagesTable() });
+        entries.push({ ...op, baseTable: pagesStructural() });
       } else if (op.kind === 'page-remove') {
         if (!st0.pages[op.name] || op.name === 'root' || op.name === 'terms') throw new Error(`Page not removable: ${op.name} (root and terms are structural; removable: module pages only)`);
         const ids = [...idsOfPage(op.name)];
         const blocking = parseRefs().filter(p => p.carries.some(c => ids.includes(c)));
         if (blocking.length) throw new Error(`Page ${op.name} still backs protected references (${blocking.map(b => b.ref).join(', ')} via ${ids.join(', ') || '(no ids)'}). Re-point or remove those references first.`);
         op.rows = indexPagesTable().filter(r => r[0] !== op.name);
-        entries.push({ ...op, baseTable: indexPagesTable(), epoch: st0.pages[op.name].epoch });
+        entries.push({ ...op, baseTable: pagesStructural(), epoch: st0.pages[op.name].epoch });
       } else throw new Error(`Unknown structural op: ${op.kind}`);
     }
     if (!entries.length) throw new Error('Nothing to write.');
@@ -491,8 +498,9 @@ function makeKeel(root) {
     if (!prop) throw new Error(`Proposal not found or already handled: ${proposal_id} (keel_status lists pending proposals).`);
     const ev = (consent_evidence || '').trim();
     if (!ev) throw new Error('consent_evidence is required: the user\'s consenting words from the conversation (audit trail).');
+    if (/[\r\n|]/.test(ev)) throw new Error('consent_evidence must be a single line without "|" characters — they break the log table. Re-quote the user\'s consenting words accordingly.');
     for (const e of prop.entries) {
-      const now = e.kind === 'section' ? getSection(e.page, e.section) : renderRows(e.kind === 'index-refs' ? indexRefsTable() : indexPagesTable());
+      const now = e.kind === 'section' ? getSection(e.page, e.section) : renderRows(e.kind === 'index-refs' ? indexRefsTable() : pagesStructural());
       const was = e.kind === 'section' ? e.baseContent : renderRows(e.baseTable);
       if (now !== was) {
         throw new Error(`The target of this proposal changed after staging (${labelOf(e)}). Call keel_reject on ${proposal_id} and re-propose against the current content — otherwise the earlier change would be silently clobbered.`);
@@ -501,7 +509,7 @@ function makeKeel(root) {
     // Snapshot the ref table BEFORE applying: a proposal that itself adds a
     // reference must not report that new reference as stale.
     const preRefs = parseRefs().map(p => ({ ...p }));
-    const n = applyProp(prop, `yes ("${ev.slice(0, 40)}")`);
+    const n = applyProp(prop, `yes ("${ev}")`);
     // Re-read state AFTER applyProp: it updates seq counters inside.
     st = readState();
     delete st.proposals[proposal_id]; writeState(st);
