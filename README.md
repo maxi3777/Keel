@@ -152,7 +152,7 @@ Then copy or symlink each directory under `skills/` into your host's skills dire
 
 No slash subcommands — one skill, natural language:
 
-- **Start** — *"use keel to record this project"* → init, requirement extraction, free authoring while draft, per-page activation announcements.
+- **Start** — *"use keel to record this project"* → init, requirement extraction, free authoring while draft, per-page activation announcements. Recommended pre-step: have the design conversation first — discuss with your agent until the design converges, then let keel record the settled consensus; the notebook records the destination, not the journey.
 - **Work** — nothing to say; the glance happens by itself. When a plan conflicts with the notebook, the agent stops and offers amend / drop / exempt. Example: the agent plans *merge several selections into one question*, glances, finds it touches P2 (*the conversation is the single authoritative source of context*), and stops with the three options instead of quietly proceeding.
 - **Grow into modules** — *"give the orders module its own page"* → `keel_page_add` (+ covers); routing and the zero-match rule take care of the rest.
 - **Rework a module** — *"redo the orders page"* → reopen that page (snapshot, batch-draft, reverse ripple), then re-declare when stable.
