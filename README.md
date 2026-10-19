@@ -57,7 +57,7 @@ project switches (active while any page is authoritative; default ON):
   steward  ON — structured post-plan check              / OFF — the glance habit alone
 ```
 
-While a page is draft, the AI writes it freely — every change logged, never a question. When it judges a page complete, in language that survives the session, it declares that page authoritative itself and **announces that to you at the moment**. Before a page's first declaration, the agent runs a cold-reader audit — an isolated subagent reads only `.keel/` and reports anything unclear, any negative-form line that is discussion history rather than boundary, and any dependence on files outside the notebook. `keel_config {consent, steward}` flips either switch anytime, in either direction, no re-validation; a pure-notebook project (`keel_init {notebook:true}`) starts with both off. Each page file's first line is a server-maintained `<!-- keel phase: … -->` marker, so a cold reader of the file alone knows how frozen it is.
+While a page is draft, the AI writes it freely — every change logged, never a question. When it judges a page complete, in language that survives the session, it runs a cold-reader audit — an isolated subagent reads only `.keel/` and reports anything unclear, any negative-form line that is discussion history rather than boundary, and any dependence on files outside the notebook — then presents a checkpoint message (readiness, audit outcome, its recommendation on the four iteration sub-skills) and declares only after you respond, announcing with a standalone `⚓ [KEEL] authoritative: …` marker line. `keel_config {consent, steward}` flips either switch anytime, in either direction, no re-validation; a pure-notebook project (`keel_init {notebook:true}`) starts with both off. Each page file's first line is a server-maintained `<!-- keel phase: … -->` marker, so a cold reader of the file alone knows how frozen it is.
 
 ### The glance
 
@@ -114,7 +114,7 @@ claude plugin marketplace add maxi3777/Keel
 claude plugin install keel@keel-marketplace
 ```
 
-Inside an interactive session the same steps are slash commands (`/plugin marketplace add maxi3777/Keel`, then `/plugin install keel@keel-marketplace`). To update later: refresh the marketplace and reinstall, or pin a ref when adding (`maxi3777/Keel@v2.4.0`).
+Inside an interactive session the same steps are slash commands (`/plugin marketplace add maxi3777/Keel`, then `/plugin install keel@keel-marketplace`). To update later: refresh the marketplace and reinstall, or pin a ref when adding (`maxi3777/Keel@v2.4.1`).
 
 Optionally verify the mechanical layer on a clone:
 

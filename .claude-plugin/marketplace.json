@@ -9,7 +9,7 @@
       "name": "keel",
       "source": "./",
       "description": "The AI's authoritative notebook: a routed page set (root DATUM + module pages + global glossary) with per-page authority, consent-tiered amendments, and the match-don't-bulk-read glance against cross-session drift.",
-      "version": "2.4.0",
+      "version": "2.4.1",
       "skills": ["./skills/keel"]
     }
   ]

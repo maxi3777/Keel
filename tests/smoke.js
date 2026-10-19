@@ -115,7 +115,7 @@ const OCONCEPT = `### Concept model
 
 (async () => {
   let r = await rpc('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'smoke', version: '0' } });
-  ok(r.result.serverInfo.version === '2.4.0', 'initialize (server version 2.4.0)');
+  ok(r.result.serverInfo.version === '2.4.1', 'initialize (server version 2.4.1)');
   child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
   r = await rpc('tools/list', {});
   ok(r.result.tools.length === 19, `tools/list exposes 19 tools (got ${r.result.tools.length})`);
@@ -165,6 +165,7 @@ const OCONCEPT = `### Concept model
   // 6. per-page declaration: root authoritative, orders stays draft
   r = await jcall('keel_config', { authoritative: true });
   ok(r.activated && r.activated.page === 'root', 'keel_config {authoritative:true} declares the ROOT page (announce note attached)');
+  ok(r.activated.announceLine === '⚓ [KEEL] authoritative: root (epoch 1) — consent on · steward on', 'declaration returns the exact ⚓ [KEEL] marker line');
   r = await jcall('keel_config', { authoritative: true });
   ok(r.activated === undefined, 're-declaration is a no-op (one-way per epoch)');
   r = await jcall('keel_status', {});

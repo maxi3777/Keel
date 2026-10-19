@@ -29,7 +29,7 @@ The SessionStart hook injects the digest verbatim; the PostToolUse hook refreshe
 
 ## Cold-reader audit (the notebook's clarity test)
 
-"Write for the whole lifecycle" (iron rule 2) cannot be verified by the writer — the writer always holds the conversation context, a cold reader never does. The audit is the external signal: spawn an isolated-context subagent (fresh context, no conversation history — a general-purpose subagent where the host provides one, or a headless ephemeral run such as `codex exec --ephemeral`) that reads ONLY `.keel/` and reports. It is the notebook's third external-signal probe, beside the glance (plan vs pins) and the skeleton test (principles vs concept model).
+"Write for the whole lifecycle" (iron rule 2) cannot be verified by the writer — the writer always holds the conversation context, a cold reader never does. The audit is the external signal: spawn an isolated-context subagent (fresh context, no conversation history — a general-purpose subagent where the host provides one; an ephemeral headless run only with the user's explicit go-ahead, since it spawns a separate process with its own cost) that reads ONLY `.keel/` and reports. It is the notebook's third external-signal probe, beside the glance (plan vs pins) and the skeleton test (principles vs concept model).
 
 - **Reading set**: the root page in full + the terms page + the pages under audit. A cold reader gets more than a glance does (the glance sees only the pins slice) because the bar is higher: the notebook alone must make the project clear — as if every file outside `.keel/` had disappeared.
 - **When** (behavioral — the skill's protocol, never server-enforced):
@@ -43,7 +43,7 @@ The SessionStart hook injects the digest verbatim; the PostToolUse hook refreshe
   3. Negative-line adjudication — for every requirement or decision stated in negative form: "If this line were deleted, would I actively misunderstand the project?" Yes → it is a boundary, keep. No → it is discussion history wearing a boundary's clothes; flag it for removal or conversion (a forward-pointing alternative, or a `revisit if` condition).
   4. External dependencies — anything the reading set cannot resolve on its own: a recorded line citing a document outside `.keel/` for support is inadmissible (self-sufficiency, references/notebook.md).
 
-The audit is a test, not a gate: judgment over the findings stays with you and the user; a page declares after the real findings are resolved.
+The audit is a test, not a gate: judgment over the findings stays with you and the user; a page declares after the real findings are resolved. Afterwards the declaration checkpoint applies (references/notebook.md): one message with the readiness judgment, the audit outcome, and your recommendation on the iteration sub-skills — declare only after the user responds.
 
 ## Maintenance
 

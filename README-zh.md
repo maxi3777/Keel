@@ -55,7 +55,7 @@ phase 按页算——完整的模块可以先受守护，未完成的模块继�
   steward  开 —— 计划后结构化检查     / 关 —— 只剩"看一眼"的基础习惯
 ```
 
-某页处于 draft 期间，AI 自由写入该页——每一次变更都记日志，从不发问。当它判定某页"该记的都记了、且脱离当前对话仍可读懂"时，它自己声明该页 authoritative，并**当场向你宣告**。某页首次声明之前，agent 会跑一次冷读者审计——隔离子代理只读 `.keel/`，报告一切不好理解之处、属于讨论史而非边界的否定式条目、以及对笔记本之外文件的依赖。`keel_config {consent, steward}` 随时翻转任一开关，双向皆可、无需重新验证；纯笔记本项目（`keel_init {notebook:true}`）从建立起两开关全关。每个页面文件的首行是服务器维护的 `<!-- keel phase: … -->` 标记——只读文件的冷读者也能知道冻结到什么程度。
+某页处于 draft 期间，AI 自由写入该页——每一次变更都记日志，从不发问。当它判定某页"该记的都记了、且脱离当前对话仍可读懂"时，先跑冷读者审计——隔离子代理只读 `.keel/`，报告一切不好理解之处、属于讨论史而非边界的否定式条目、以及对笔记本之外文件的依赖——然后呈报一个检查点消息（就绪判断、审计结果、对四个外带技能的推荐），得到你的回应后才声明，并用独立成行的 `⚓ [KEEL] authoritative: …` 标记行宣告。`keel_config {consent, steward}` 随时翻转任一开关，双向皆可、无需重新验证；纯笔记本项目（`keel_init {notebook:true}`）从建立起两开关全关。每个页面文件的首行是服务器维护的 `<!-- keel phase: … -->` 标记——只读文件的冷读者也能知道冻结到什么程度。
 
 ### 看一眼
 
@@ -112,7 +112,7 @@ claude plugin marketplace add maxi3777/Keel
 claude plugin install keel@keel-marketplace
 ```
 
-交互会话里同样的两步是斜杠命令（`/plugin marketplace add maxi3777/Keel`，然后 `/plugin install keel@keel-marketplace`）。日后更新：更新市场后重装，或添加时钉住版本（`maxi3777/Keel@v2.4.0`）。
+交互会话里同样的两步是斜杠命令（`/plugin marketplace add maxi3777/Keel`，然后 `/plugin install keel@keel-marketplace`）。日后更新：更新市场后重装，或添加时钉住版本（`maxi3777/Keel@v2.4.1`）。
 
 克隆验证（可选）：
 

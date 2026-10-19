@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * Keel MCP server v2.4.0 — zero-dependency, stdio JSON-RPC (MCP).
+ * Keel MCP server v2.4.1 — zero-dependency, stdio JSON-RPC (MCP).
  *
  * Doctrine: Keel is the AI's authoritative NOTEBOOK — a routed set of pages
  * (a root DATUM, a global terminology page, module pages) recording
@@ -40,7 +40,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const VERSION = '2.4.0';
+const VERSION = '2.4.1';
 
 const SECTIONS = [
   { id: '00', key: 'intent',   title: '00 Intent' },
@@ -789,7 +789,8 @@ function makeKeel(root) {
       activated = {
         page, phase: 'authoritative', epoch: st.pages[page].epoch,
         consentMode: st.consentMode, stewardMode: st.stewardMode, glossaryNowCore,
-        note: `Page "${page}" declared authoritative — announce to the user: the consent mechanism and the structured post-plan check (STEWARD) now apply to this page ${st.consentMode || st.stewardMode ? 'per the switches' : '(both switched off — notebook mode)'}. Phases are per-page; declare or reopen pages individually via keel_config.${glossaryNowCore.length ? ` ${glossaryNowCore.length} glossary term(s) now cite authoritative surfaces (${glossaryNowCore.join(', ')}) — edits to them are core from now on; tier is evaluated at every write, rows store no tier.` : ''}`,
+        announceLine: `⚓ [KEEL] authoritative: ${page} (epoch ${st.pages[page].epoch}) — consent ${st.consentMode ? 'on' : 'off'} · steward ${st.stewardMode ? 'on' : 'off'}`,
+        note: `Emit announceLine as ONE standalone line — blank lines around it, nothing else on it. The consent mechanism and the structured post-plan check (STEWARD) now apply to this page ${st.consentMode || st.stewardMode ? 'per the switches' : '(both switched off — notebook mode)'}. Phases are per-page; declare or reopen pages individually via keel_config.${glossaryNowCore.length ? ` ${glossaryNowCore.length} glossary term(s) now cite authoritative surfaces (${glossaryNowCore.join(', ')}) — edits to them are core from now on; tier is evaluated at every write, rows store no tier.` : ''}`,
       };
     }
     if (args.phase === 'draft' && st.pages[page].phase === 'authoritative') {
@@ -1011,7 +1012,7 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: { proposal_id: { type: 'string' }, consent_evidence: { type: 'string' } }, required: ['proposal_id', 'consent_evidence'] } },
   { name: 'keel_reject', description: 'Discard a staged proposal.',
     inputSchema: { type: 'object', properties: { proposal_id: { type: 'string' } }, required: ['proposal_id'] } },
-  { name: 'keel_config', description: 'The switchboard. Phases are per-page, switches are project-level. authoritative:true declares a page authoritative (default page "root"; one-way per epoch; the judgment is the agent\'s — activate when that page\'s essentials are recorded in language that survives the session; announce it to the user). phase:"draft" + page REOPENS an authoritative page (user-directed: snapshot to archive, pending proposals on it dropped, reverse ripple reported). consent/steward flip the project switches (default ON at first activation; notebook projects start OFF).',
+  { name: 'keel_config', description: 'The switchboard. Phases are per-page, switches are project-level. authoritative:true declares a page authoritative (default page "root"; one-way per epoch; the judgment is the agent\'s — activate when that page\'s essentials are recorded in language that survives the session; announce it with the standalone marker line returned as activated.announceLine). phase:"draft" + page REOPENS an authoritative page (user-directed: snapshot to archive, pending proposals on it dropped, reverse ripple reported). consent/steward flip the project switches (default ON at first activation; notebook projects start OFF).',
     inputSchema: { type: 'object', properties: { consent: { type: 'boolean' }, steward: { type: 'boolean' }, authoritative: { type: 'boolean' }, page: { type: 'string' }, phase: { type: 'string', enum: ['draft'] } } } },
   { name: 'keel_glossary_register', description: 'Register/update terms on the terms page (the glossary is global). One term via term+definition, or several at once via terms:[{term, definition, load_bearing, aliases}, …] — one call, one amendment row. load_bearing cites claim ids or page names; a term citing an authoritative surface is core-tier (staged while consent is active). term and definition are required and must not contain "|" (it breaks the table row).',
     inputSchema: { type: 'object', properties: { term: { 'type': 'string' }, definition: { 'type': 'string' }, load_bearing: { type: 'array', items: { type: 'string' } }, aliases: { type: 'array', items: { type: 'string' } }, terms: { type: 'array', description: 'batch form: [{term, definition, load_bearing?, aliases?}, …]', items: { type: 'object', properties: { term: { type: 'string' }, definition: { type: 'string' }, load_bearing: { type: 'array', items: { type: 'string' } }, aliases: { type: 'array', items: { type: 'string' } } }, required: ['term', 'definition'] } } } } },

@@ -2,7 +2,7 @@
 
 > **一句话。** Keel 是 AI 的权威笔记本：一组只能经服务器写入的页面（根 DATUM + 模块页 + 全局词汇表），由 INDEX 路由、digest 注入，防止跨会话的主题遗忘与静默漂移；AI 自由思考、自由计划，只在实施前"匹配一眼"。
 
-**文档契约。** 本文件是 Keel 的*心智模型*：开发者视角的全流程图景。它是派生文档——真源是代码（`mcp/server.js`、`skills/`、`hooks/`）与 `docs/PROTOCOL.md`；若本文件与它们冲突，**代码赢，本文件修**。对应 **Keel v2.4.0**。
+**文档契约。** 本文件是 Keel 的*心智模型*：开发者视角的全流程图景。它是派生文档——真源是代码（`mcp/server.js`、`skills/`、`hooks/`）与 `docs/PROTOCOL.md`；若本文件与它们冲突，**代码赢，本文件修**。对应 **Keel v2.4.1**。
 
 ---
 
@@ -93,15 +93,16 @@ flowchart TD
     end
     JUDGE["AI 语义判断：这一页该记的都记了，<br/>且语言在整个项目生命周期内清晰"]:::ai
     COLD["冷读者审计（仅首次声明前：T1 全册 / T2 该页+阅读集；<br/>隔离子代理只读 .keel，报复述/困惑/否定行裁决/外引）"]:::ai
+    CHECK["声明检查点：完成初稿的那一轮永不声明——<br/>呈报就绪判断 + 审计结果 + 外带技能推荐，用户回应后才声明"]:::ai
     DECLARE["keel_config authoritative:true page —— 逐页显式声明<br/>（单向/纪元；激活从不作为写入的副作用发生）"]:::ai
     ACT["该页 phase → authoritative（开关项目级，默认开）<br/>页首 phase 行由服务器同步更新"]:::mech
-    TELL["agent 向用户宣告该页已激活"]:::ai
+    TELL["宣告：独立成行的 ⚓ [KEEL] authoritative 标记行<br/>（config 结果逐字给出 announceLine）"]:::ai
     REOPEN["keel_config phase draft page —— 重开（用户指令）：<br/>快照入档 · 弃该页暂存 · 纪元+1 · 反向涟漪报告"]:::mech
 
     INIT --> FREE
     PADD --> FREE
     FREE --> CLEAR --> LOGD
-    FREE --> JUDGE --> COLD --> DECLARE --> ACT --> TELL
+    FREE --> JUDGE --> COLD --> CHECK --> DECLARE --> ACT --> TELL
     ACT -->|"用户要求重做该模块"| REOPEN
     REOPEN -->|"自由重写后再次声明"| DECLARE
     classDef human fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
@@ -306,7 +307,7 @@ flowchart TD
 flowchart TD
     INPUT["输入严格受限：所属页 00 + 根页 P*，别的一律不读<br/>（尤其不读已记录的概念模型本身）"]:::ai
     REBUILD["重建 Entity/Flow/Invariant<br/>——像一个对项目一无所知的读者"]:::ai
-    FRESH["证据来源：优先真新进程（如 codex exec --ephemeral），<br/>标注 external；无此设施才自模拟，标注 self-simulated<br/>并告知用户此检查已弱化"]:::ai
+    FRESH["证据来源：优先上下文隔离子代理（prompt 只给 00+P*，<br/>禁读项目文件），标注 external (fresh context)；无子代理设施时<br/>新进程（如 codex exec --ephemeral）须用户明确同意；<br/>自模拟必须标注并告知用户此检查已弱化"]:::ai
     DIFF["对照已记录概念模型 diff：覆盖率 + 矛盾"]:::ai
     BAR["零矛盾是底线（矛盾即发现）；覆盖率 ≲ 一半 = 原则是装饰"]:::ai
     FIX["指名哪条原则带不动哪部分 → 原则修订（用户采纳后经②）"]:::ai
